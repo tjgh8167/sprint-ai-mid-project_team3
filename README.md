@@ -34,10 +34,10 @@ sprint-ai-mid-project_team3-/
 │   
 │
 ├── notebooks/                        │  # 실험 노트북
-│   ├── 01_data_pipeline_test.ipynb
+│   ├── 01_parser_chunker_test.ipynb
 │   ├── 02_retriever_test.ipynb
-│   └── 03_database_test.ipynb
-│
+│   ├── 03_rag_engine_test.ipynb
+│   └── 04_evaluate_test.ipynb
 │
 ├── gcp_main.py                       │  # 오픈소스 모델 기반 실행 코드
 │    
