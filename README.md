@@ -14,7 +14,7 @@
 
 | 이름 | 역할 | 주요 업무 |
 | :--- | :--- | :--- |
-| **YuJY9897** | **PM + Data Engineer** | 프로젝트 범위, 일정, 회의, GitHub 관리<br>원본 RFP 및 `data_list.csv` 구조 확인<br>HWP/PDF 다중 포맷 파싱<br>`metadata.csv`, `chunks.jsonl` 스키마 설계<br>청킹 전략 설계 및 구현<br>평가 질문셋/지표 설계와 실험 결과 정리 |
+| **유재열** | **PM + Data Engineer** | 프로젝트 범위, 일정, 회의, GitHub 관리<br>원본 RFP 및 `data_list.csv` 구조 확인<br>HWP/PDF 다중 포맷 파싱<br>`metadata.csv`, `chunks.jsonl` 스키마 설계<br>청킹 전략 설계 및 구현<br>평가 질문셋/지표 설계와 실험 결과 정리 |
 | **정서호** | **Retrieval 1** | 임베딩 모델 및 Vector DB 선택<br>임베딩 생성 및 Vector DB 구축<br>기본 top-k 검색 구현<br>메타데이터 필터링 구현 |
 | **이태훈** | **Retrieval 2** | Retrieval 심화 실험 우선순위 정리<br>MMR, Hybrid Search, Multi-Query, Re-Ranking 실험<br>HuggingFace 로컬 모델 기반 RAG 실험<br>검색 고도화 결과 비교 |
 | **김효섭** | **Generation** | 답변 생성 모델 선정<br>프롬프트 엔지니어링 및 RAG Chain 구성<br>데모 UI/CLI 구현<br>대화 맥락 유지와 비용/응답 속도 최적화 |
@@ -54,7 +54,7 @@ sprint-ai-mid-project_team3/
 
 | 역할 | 담당 | 주 작업 파일 | 선행 의존성 |
 | :--- | :--- | :--- | :--- |
-| PM + Data Engineer | YuJY9897 | `src/parser_chunker.py`, `notebook/01_parser_chunker_test.ipynb`, `evaluate.py`, `notebook/04_evaluate_test.ipynb` | 원본 RFP, `data_list.csv` |
+| PM + Data Engineer | 유재열 | `src/parser_chunker.py`, `notebook/01_parser_chunker_test.ipynb`, `evaluate.py`, `notebook/04_evaluate_test.ipynb` | 원본 RFP, `data_list.csv` |
 | Retrieval 1 | 정서호 | `src/retriever.py`, `scripts/build_embeddings.py`, `scripts/build_vector_db.py`, `notebook/02_retriever_test.ipynb` | PM+Data의 `metadata.csv`, `chunks.jsonl` |
 | Retrieval 2 | 이태훈 | `src/retriever.py`, `notebook/02_retriever_test.ipynb`, `gcp_main.py` | Retrieval 1의 기본 검색 결과 |
 | Generation | 김효섭 | `src/rag_engine.py`, `notebook/03_rag_engine_test.ipynb`, `api_main.py`, `app/streamlit_app.py` | Retrieval 검색 결과 |
