@@ -14,17 +14,17 @@
 
 | 이름 | 역할 | 주요 업무 |
 | :--- | :--- | :--- |
-| **이름** | **Project Manager + Retrieval 2** | 회의 주도 및 프로젝트 매니징<br>평가 질문셋/지표 설계<br>실험 결과표 및 발표자료 정리<br>MMR, Hybrid Search, Multi-Query, Re-Ranking 등 Retrieval 심화 실험 조율 |
-| **이름** | **Data Engineer** | 원본 RFP 및 `data_list.csv` 구조 확인<br>HWP/PDF 다중 포맷 파싱<br>`metadata.csv`, `chunks.jsonl` 스키마 설계<br>청킹 전략 설계 및 구현 |
-| **이름** | **Retrieval 1** | 임베딩 모델 및 Vector DB 선택<br>임베딩 생성 및 Vector DB 구축<br>기본 top-k 검색 구현<br>메타데이터 필터링 구현 |
-| **이름** | **Generation** | 답변 생성 모델 선정<br>프롬프트 엔지니어링 및 RAG Chain 구성<br>데모 UI/CLI 구현<br>대화 맥락 유지와 비용/응답 속도 최적화 |
+| **YuJY9897** | **PM + Data Engineer** | 프로젝트 범위, 일정, 회의, GitHub 관리<br>원본 RFP 및 `data_list.csv` 구조 확인<br>HWP/PDF 다중 포맷 파싱<br>`metadata.csv`, `chunks.jsonl` 스키마 설계<br>청킹 전략 설계 및 구현<br>평가 질문셋/지표 설계와 실험 결과 정리 |
+| **정서호** | **Retrieval 1** | 임베딩 모델 및 Vector DB 선택<br>임베딩 생성 및 Vector DB 구축<br>기본 top-k 검색 구현<br>메타데이터 필터링 구현 |
+| **이태훈** | **Retrieval 2** | Retrieval 심화 실험 우선순위 정리<br>MMR, Hybrid Search, Multi-Query, Re-Ranking 실험<br>HuggingFace 로컬 모델 기반 RAG 실험<br>검색 고도화 결과 비교 |
+| **김효섭** | **Generation** | 답변 생성 모델 선정<br>프롬프트 엔지니어링 및 RAG Chain 구성<br>데모 UI/CLI 구현<br>대화 맥락 유지와 비용/응답 속도 최적화 |
 
 ## 3. 프로젝트 구조
 
 현재 구조는 역할별 병렬 구현이 가능하도록 `src/` 안에서 데이터 처리, 검색, 답변 생성을 분리합니다. 공통 설정값은 `config/default.yaml`에서 관리하여 모델명, chunk 크기, top_k 같은 값이 코드에 하드코딩되지 않도록 합니다.
 
 ```text
-sprint-ai-mid-project_team3-/
+sprint-ai-mid-project_team3/
 ├── .gitignore
 ├── README.md                         |  # 프로젝트 소개, 역할, 작업 규칙
 ├── config/
@@ -35,15 +35,15 @@ sprint-ai-mid-project_team3-/
 │
 ├── src/                              |  # 공통 모듈 소스코드
 │   ├── __init__.py
-│   ├── parser_chunker.py             |  # Data: 문서 로드, 메타데이터 매핑, 청킹
-│   ├── retriever.py                  |  # Retrieval 1/2: 임베딩, Vector DB, 검색, 필터링
+│   ├── parser_chunker.py             |  # PM+Data: 문서 로드, 메타데이터 매핑, 청킹
+│   ├── retriever.py                  |  # Retrieval 1/2: 임베딩, Vector DB, 검색, 필터링, 검색 고도화
 │   └── rag_engine.py                 |  # Generation: 프롬프트, 답변 생성, RAG Chain
 │
 ├── notebook/                         |  # 역할별 실험 노트북
-│   ├── 01_parser_chunker_test.ipynb  |  # Data 실험
-│   ├── 02_retriever_test.ipynb       |  # Retrieval 실험
+│   ├── 01_parser_chunker_test.ipynb  |  # PM+Data 실험
+│   ├── 02_retriever_test.ipynb       |  # Retrieval 1/2 실험
 │   ├── 03_rag_engine_test.ipynb      |  # Generation 실험
-│   └── 04_evaluate_test.ipynb        |  # PM + Retrieval 2 평가 실험
+│   └── 04_evaluate_test.ipynb        |  # PM+Data 평가 실험
 │
 ├── gcp_main.py                       |  # 시나리오 A: GCP/오픈소스 모델 기반 실행
 ├── api_main.py                       |  # 시나리오 B: LLM API 기반 실행
@@ -52,14 +52,14 @@ sprint-ai-mid-project_team3-/
 
 ## 4. 역할별 병렬 작업 방식
 
-| 역할 | 주 작업 파일 | 선행 의존성 |
-| :--- | :--- | :--- |
-| Data Engineer | `src/parser_chunker.py`, `notebook/01_parser_chunker_test.ipynb` | 원본 RFP, `data_list.csv` |
-| Retrieval 1 | `src/retriever.py`, `notebook/02_retriever_test.ipynb` | Data의 `metadata.csv`, `chunks.jsonl` |
-| Generation | `src/rag_engine.py`, `notebook/03_rag_engine_test.ipynb`, `api_main.py` | Retrieval 검색 결과 |
-| PM + Retrieval 2 | `evaluate.py`, `notebook/04_evaluate_test.ipynb`, 실험 결과표 | 기본 검색/답변 파이프라인 |
+| 역할 | 담당 | 주 작업 파일 | 선행 의존성 |
+| :--- | :--- | :--- | :--- |
+| PM + Data Engineer | YuJY9897 | `src/parser_chunker.py`, `notebook/01_parser_chunker_test.ipynb`, `evaluate.py`, `notebook/04_evaluate_test.ipynb` | 원본 RFP, `data_list.csv` |
+| Retrieval 1 | 정서호 | `src/retriever.py`, `scripts/build_embeddings.py`, `scripts/build_vector_db.py`, `notebook/02_retriever_test.ipynb` | PM+Data의 `metadata.csv`, `chunks.jsonl` |
+| Retrieval 2 | 이태훈 | `src/retriever.py`, `notebook/02_retriever_test.ipynb`, `gcp_main.py` | Retrieval 1의 기본 검색 결과 |
+| Generation | 김효섭 | `src/rag_engine.py`, `notebook/03_rag_engine_test.ipynb`, `api_main.py`, `app/streamlit_app.py` | Retrieval 검색 결과 |
 
-초반에는 Data가 `metadata.csv`, `chunks.jsonl` 샘플을 먼저 제공하고, Retrieval 1과 Generation은 샘플 데이터 기준으로 병렬 개발합니다. 이후 전체 데이터가 준비되면 같은 인터페이스로 확장합니다.
+초반에는 PM+Data가 `metadata.csv`, `chunks.jsonl` 샘플을 먼저 제공하고, Retrieval 1/2와 Generation은 샘플 데이터 기준으로 병렬 개발합니다. 이후 전체 데이터가 준비되면 같은 인터페이스로 확장합니다.
 
 ## 5. 작업 관리
 
@@ -79,7 +79,7 @@ PR 제목 예시:
 ```text
 [Data] #3 PDF/HWP 텍스트 추출 파이프라인 구현
 [Retrieval 1] #16 임베딩 생성 스크립트 구현
-[PM][Retrieval 2] #23 심화: MMR 검색 실험
+[Retrieval 2] #23 심화: MMR 검색 실험
 [Generation] #8 답변 생성 프롬프트 구현
 ```
 
