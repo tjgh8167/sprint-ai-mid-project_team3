@@ -1,0 +1,67 @@
+paths:
+  raw_data_dir: data/raw
+  processed_data_dir: data/processed
+  metadata_path: data/processed/metadata.csv
+  chunks_path: data/processed/chunks.jsonl
+  vector_db_dir: vector_db
+  evaluation_questions_path: data/evaluation/questions.jsonl
+  evaluation_results_dir: data/evaluation/results
+
+parsing:
+  input_formats:
+    - pdf
+    - hwp
+  save_extracted_text: true
+
+chunking:
+  strategy: fixed_size
+  chunk_size: 1000
+  chunk_overlap: 150
+  min_chunk_chars: 100
+
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+  batch_size: 64
+
+vector_db:
+  provider: chroma
+  collection_name: rfp_chunks
+  persist_directory: vector_db/chroma
+
+retrieval:
+  search_type: similarity
+  top_k: 5
+  use_metadata_filter: true
+  filter_fields:
+    - agency
+    - project_name
+    - doc_id
+
+reranking:
+  enabled: false
+  top_n: 5
+
+llm:
+  provider: openai
+  model: gpt-4o-mini
+  temperature: 0.0
+  top_p: 1.0
+  max_tokens: 1200
+
+rag:
+  answer_language: ko
+  include_sources: true
+  unknown_answer_policy: say_unknown
+  max_context_chunks: 5
+  use_chat_history: true
+  max_history_turns: 3
+
+evaluation:
+  retrieval_metrics:
+    - recall_at_3
+    - recall_at_5
+  generation_metrics:
+    - answer_accuracy
+    - source_groundedness
+  latency_metric: response_time_seconds
