@@ -21,31 +21,47 @@
 
 ## 3. 프로젝트 구조
 
+현재 구조는 역할별 병렬 구현이 가능하도록 `src/` 안에서 데이터 처리, 검색, 답변 생성을 분리합니다. 공통 설정값은 `config/default.yaml`에서 관리하여 모델명, chunk 크기, top_k 같은 값이 코드에 하드코딩되지 않도록 합니다.
+
 ```text
 sprint-ai-mid-project_team3-/
 ├── .gitignore
-├── README.md                         |  # 프로젝트 소개, 보고서 링크, 협업일지 링크 배치
+├── README.md                         |  # 프로젝트 소개, 역할, 작업 규칙
+├── config/
+│   └── default.yaml                  |  # 모델, 경로, chunk, retrieval, generation 기본 설정
 │
-├── data/                             |  # (로컬) 데이터 원본
+├── data/                             |  # (로컬/VM) RFP 원본 및 중간 산출물, GitHub 업로드 제외
+├── vector_db/                        |  # (로컬/VM) FAISS/Chroma 저장소, GitHub 업로드 제외
 │
-├── src/                              │  # 공통 모듈 소스코드
+├── src/                              |  # 공통 모듈 소스코드
 │   ├── __init__.py
-│   ├── parser_chunker.py             │  # 문서로드, 데이터 매핑 및 청킹 구현
-│   ├── retriever.py                  │  # 임베딩, Vector DB 연결 및 관리, Retriever 구현
-│   └── rag_engine.py                 │  # 프롬프트 엔지니어링 및 RAG Chain 구성
+│   ├── parser_chunker.py             |  # Data: 문서 로드, 메타데이터 매핑, 청킹
+│   ├── retriever.py                  |  # Retrieval 1/2: 임베딩, Vector DB, 검색, 필터링
+│   └── rag_engine.py                 |  # Generation: 프롬프트, 답변 생성, RAG Chain
 │
-├── notebooks/                        │  # 실험 노트북
-│   ├── 01_parser_chunker_test.ipynb
-│   ├── 02_retriever_test.ipynb
-│   ├── 03_rag_engine_test.ipynb
-│   └── 04_evaluate_test.ipynb
+├── notebook/                         |  # 역할별 실험 노트북
+│   ├── 01_parser_chunker_test.ipynb  |  # Data 실험
+│   ├── 02_retriever_test.ipynb       |  # Retrieval 실험
+│   ├── 03_rag_engine_test.ipynb      |  # Generation 실험
+│   └── 04_evaluate_test.ipynb        |  # PM + Retrieval 2 평가 실험
 │
-├── gcp_main.py                       │  # 오픈소스 모델 기반 실행 코드
-├── api_main.py                       │  # OpenAI API 기반 실행 코드
-└── evaluate.py                       │  # 성능 평가
+├── gcp_main.py                       |  # 시나리오 A: GCP/오픈소스 모델 기반 실행
+├── api_main.py                       |  # 시나리오 B: LLM API 기반 실행
+└── evaluate.py                       |  # 성능 평가 실행
 ```
 
-## 4. 작업 관리
+## 4. 역할별 병렬 작업 방식
+
+| 역할 | 주 작업 파일 | 선행 의존성 |
+| :--- | :--- | :--- |
+| Data Engineer | `src/parser_chunker.py`, `notebook/01_parser_chunker_test.ipynb` | 원본 RFP, `data_list.csv` |
+| Retrieval 1 | `src/retriever.py`, `notebook/02_retriever_test.ipynb` | Data의 `metadata.csv`, `chunks.jsonl` |
+| Generation | `src/rag_engine.py`, `notebook/03_rag_engine_test.ipynb`, `api_main.py` | Retrieval 검색 결과 |
+| PM + Retrieval 2 | `evaluate.py`, `notebook/04_evaluate_test.ipynb`, 실험 결과표 | 기본 검색/답변 파이프라인 |
+
+초반에는 Data가 `metadata.csv`, `chunks.jsonl` 샘플을 먼저 제공하고, Retrieval 1과 Generation은 샘플 데이터 기준으로 병렬 개발합니다. 이후 전체 데이터가 준비되면 같은 인터페이스로 확장합니다.
+
+## 5. 작업 관리
 
 | 항목 | 링크 |
 | :--- | :--- |
@@ -54,7 +70,7 @@ sprint-ai-mid-project_team3-/
 | 협업일지 | [협업일지 링크](https://docs.google.com/spreadsheets/d/1LoEBOuxMkzjaf2hdq9GiLNaeNl8UUU9WKPQUzh2PhEM/edit?usp=drive_link) |
 | 보고서 작성<br>(추후 완성본 링크 기입) | [보고서 링크](https://canva.link/q0494iur016u7uq) |
 
-## 5. 이슈 및 PR 규칙
+## 6. 이슈 및 PR 규칙
 
 작업은 GitHub Issues의 번호와 연결합니다.
 
@@ -79,7 +95,7 @@ Closes #3
 Related to #3
 ```
 
-## 6. 기본 구현 범위
+## 7. 기본 구현 범위
 
 1. 원본 RFP 및 `data_list.csv` 구조 확인
 2. PDF/HWP 텍스트 추출
@@ -91,7 +107,7 @@ Related to #3
 8. 평가 질문셋 및 결과표 작성
 9. 간단한 데모 UI 또는 CLI 구현
 
-## 7. 심화 구현 후보
+## 8. 심화 구현 후보
 
 - 의미 단위 청킹
 - MMR 검색
@@ -103,7 +119,20 @@ Related to #3
 - 대화 맥락 유지
 - 비용 및 응답 속도 최적화
 
-## 8. 저장 규칙
+## 9. 설정 관리 규칙
+
+모델명, chunk 크기, overlap, top_k, temperature 같은 실험 설정은 `config/default.yaml`에 기록하고 코드에서는 설정 파일을 읽어 사용합니다.
+
+하드코딩하지 않을 값:
+
+- `chunk_size`, `chunk_overlap`
+- embedding model
+- Vector DB 종류와 저장 경로
+- `top_k`, search type
+- LLM model, `temperature`, `top_p`, `max_tokens`
+- 평가 질문셋 경로와 결과 저장 경로
+
+## 10. 저장 규칙
 
 GitHub에는 코드와 문서만 저장합니다.
 
