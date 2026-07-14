@@ -26,8 +26,11 @@ retrieval:
       collection_name: bidmate_local
 
 generation:
-  provider: baseline
-  model: null
+  provider: openai
+  model: gpt-5-nano
+  temperature: 0.1
+  top_p: 0.95
+  max_tokens: 1000
 
 experiments:
   advanced_search:

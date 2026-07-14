@@ -1,10 +1,24 @@
+# src/rag_engine.py
+import os
 from dataclasses import asdict
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 
 from src.retriever import SearchResult
 
+load_dotenv()
 
-SYSTEM_RULE = "문서에 있는 내용만 근거로 답변하고, 문서에 없으면 모른다고 답합니다."
-
+SYSTEM_RULE = (
+    "당신은 공공입찰 및 제안요청서(RFP) 분석을 돕는 최고 수준의 전문 AI 어시스턴트입니다.\n"
+    "반드시 아래에 제공된 맥락(Context) 문서 내용에만 기반하여 질문에 답변하십시오.\n\n"
+    "[작성 원칙]\n"
+    "1. 제공된 맥락 내에서만 사실에 기반하여 간결하고 명확하게 답변할 것.\n"
+    "2. 주어진 맥락으로 답변이 어려운 경우, 절대 추측하거나 지어내지 말고 '제공된 문서에서 근거를 찾을 수 없어 확인할 수 없습니다'라고 단호하게 답할 것.\n"
+    "3. 답변 하단에는 반드시 참고한 문서의 출처(예: 파일명 또는 사업명)를 명시할 것.\n"
+    "4. 사용자가 읽기 편하도록 적절히 글머리 기호(-, *)를 사용하여 한국어로 작성할 것."
+)
 
 def build_context(results: list[SearchResult]) -> str:
     context_blocks = []
@@ -18,21 +32,35 @@ def build_context(results: list[SearchResult]) -> str:
         )
     return "\n\n".join(context_blocks)
 
-
-def generate_answer(question: str, results: list[SearchResult]) -> dict:
+def generate_answer(question: str, results: list[SearchResult], config: dict = None) -> dict:
     if not results:
         return {
             "answer": "관련 문서 내용을 찾지 못했습니다. 원본 문서나 검색 조건을 다시 확인해 주세요.",
             "sources": [],
         }
 
+    # 1. 설정값 로드
+    if config and "generation" in config:
+        model_name = config["generation"].get("model", "gpt-5-nano")
+        temperature = config["generation"].get("temperature", 0.1)
+    else:
+        model_name = "gpt-5-nano"
+        temperature = 0.1
+
+    # 2. LLM 및 체인 구성 (이 부분이 빠져있으면 NameError가 납니다!)
+    llm = ChatOpenAI(model=model_name, temperature=temperature)
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_RULE + "\n\nContext:\n{context}"),
+        ("human", "{question}")
+    ])
+    
+    # 여기서 'chain' 변수가 정의됩니다.
+    chain = prompt | llm | StrOutputParser()
+
+    # 3. 컨텍스트 빌드 후 실행
     context = build_context(results)
-    answer = (
-        f"질문: {question}\n\n"
-        f"답변: 검색된 RFP 문서 기준으로 보면, 핵심 근거는 다음과 같습니다.\n"
-        f"{context}\n\n"
-        f"주의: 이 답변은 현재 검색된 청크만 기반으로 한 기본 생성 결과입니다."
-    )
+    answer = chain.invoke({"context": context, "question": question})
 
     return {
         "answer": answer,
