@@ -1,4 +1,6 @@
 paths:
+  metadata: /data/original_data/data_list.csv
+  raw_documents: /data/original_data/files
   chunks: samples/processed/sample_chunks.jsonl
 
 chunking:
