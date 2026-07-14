@@ -49,3 +49,59 @@ def main(default_profile: str = "baseline") -> None:
 
 if __name__ == "__main__":
     main()
+
+
+        "--profile",
+        choices=["baseline", "openai", "local"],
+        default=default_profile,
+    )
+    args = parser.parse_args()
+
+    response = run(args.question, args.config, args.profile)
+    print(response["answer"])
+
+        "--profile",
+        choices=["baseline", "openai", "local"],
+        default=default_profile,
+    )
+    args = parser.parse_args()
+
+    response = run(args.question, args.config, args.profile)
+    print(response["answer"])
+
+        "--profile",
+        choices=["baseline", "openai", "local"],
+        default=default_profile,
+    )
+    args = parser.parse_args()
+
+    response = run(args.question, args.config, args.profile)
+    print(response["answer"])
+
+        "--profile",
+        choices=["baseline", "openai", "local"],
+        default=default_profile,
+    )
+    args = parser.parse_args()
+
+    response = run(args.question, args.config, args.profile)
+    print(response["answer"])
+
+        "--profile",
+        choices=["baseline", "openai", "local"],
+        default=default_profile,
+    )
+    args = parser.parse_args()
+
+    response = run(args.question, args.config, args.profile)
+    print(response["answer"])
+
+        "--profile",
+        choices=["baseline", "openai", "local"],
+        default=default_profile,
+    )
+    args = parser.parse_args()
+
+    response = run(args.question, args.config, args.profile)
+    print(response["answer"])
+
