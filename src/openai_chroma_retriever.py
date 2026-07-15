@@ -5,8 +5,7 @@ from langchain_chroma import Chroma
 
 class OpenAIChromaRetriever:
 
-    def __init__(self, chunks: list[dict], config: dict):
-        self.chunks = chunks
+    def __init__(self, config: dict):
         self.config = config
 
         # retrieval 설정이 config에 있는지 확인하고, 없으면 그냥 self.config 가져오고 있으면 retriever 가져오기
@@ -28,27 +27,11 @@ class OpenAIChromaRetriever:
         # top_k 값 저장 (yaml에서 설정한 값이 없으면 기본값 3으로 설정)
         self.default_top_k = retrieval_config.get("top_k", 3)
 
-        # Vector DB를 위한 데이터 파싱 (sample chunks를 기반으로 texts, metadatas, ids 생성 / 추후 문서 청킹 후 필요 시 수정)
-        texts = []      # 실제 텍스트
-        metadatas = []  # 각 텍스트에 대한 데이터
-        ids = []        # 청크 별 ID (chunk_id)
-
-        for idx, chunk in enumerate(self.chunks):                       # 문서 로드 / 청킹하면서 생긴 metadata와 chunk_id를 기반으로 texts, metadatas, ids 생성
-            texts.append(chunk["text"])                                 # 본문을 texts에 추가
-            meta = chunk.get("metadata", {}).copy()                     # 텍스트의 metadata를 가져온다 copy = 직접 수정 방지
-            meta["chunk_id"] = chunk.get("chunk_id", f"chunk_{idx}")    # metadata의 chunk_id를 가져오는데 f"chunk_{idx}"는 chunk_id가 없을 경우 새로 만든다~
-            meta["doc_id"] = chunk.get("doc_id", "")                    # metadata의 doc_id를 가져오는데 없으면 빈 문자열로 설정 (사실 존재하니, chunk["doc_id"]로 가져와도 됨)
-            metadatas.append(meta)                                      # metadatas에 위에서 만든 meta를 추가
-            ids.append(meta["chunk_id"])                                # 청크별 고유 식별 id (Vector DB에서 각 청크를 구분하기 위해 필요)
-
         # Vector DB 생성
-        self.vectorstore = Chroma.from_texts(
-            texts=texts,
-            embedding=self.embeddings,
-            metadatas=metadatas,
-            ids=ids,
-            persist_directory=persist_directory,
-            collection_name=collection_name
+        self.vectorstore = Chroma(
+            collection_name=collection_name,
+            embedding_function=self.embeddings,
+            persist_directory=persist_directory
         )
 
     def search(self, query: str, top_k: int | None = None, filters: dict | None = None) -> list[SearchResult]:
