@@ -43,15 +43,24 @@ def generate_answer(question: str, results: list[SearchResult], config: dict = N
         }
 
     # 1. 설정값 로드
-    if config and "generation" in config:
-        model_name = config["generation"].get("model", "gpt-5-nano")
-        temperature = config["generation"].get("temperature", 0.1)
-    else:
-        model_name = "gpt-5-nano"
-        temperature = 0.1
+    gen_config = config.get("generation", {}) if config else {}
+    model_name = gen_config.get("model", "gpt-5-nano")
+    temperature = gen_config.get("temperature", 0.1)
+    top_p = gen_config.get("top_p", 0.95)
+    max_tokens = gen_config.get("max_tokens", 1000)
 
-    # 2. LLM 및 체인 구성 (이 부분이 빠져있으면 NameError가 납니다!)
-    llm = ChatOpenAI(model=model_name, temperature=temperature)
+    # 2. LLM 및 체인 구성
+    # gpt-5/o-시리즈(reasoning 모델)는 temperature/top_p가 1로 고정되어 있어
+    # 커스텀 값을 보내면 400 Unsupported parameter 에러가 발생한다.
+    # 해당 모델일 땐 두 파라미터를 빼고, 그 외 모델(gpt-4o 등)일 땐 YAML 값을 그대로 적용한다.
+    is_reasoning_model = model_name.startswith(("gpt-5", "o1", "o3", "o4"))
+
+    llm_kwargs = {"model": model_name, "max_tokens": max_tokens}
+    if not is_reasoning_model:
+        llm_kwargs["temperature"] = temperature
+        llm_kwargs["top_p"] = top_p
+
+    llm = ChatOpenAI(**llm_kwargs)
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", SYSTEM_RULE + "\n\nContext:\n{context}"),
