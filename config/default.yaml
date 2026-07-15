@@ -1,8 +1,8 @@
 paths:
   metadata: /data/original_data/data_list.csv
   raw_documents: /data/original_data/files
-  chunks: data/processed/chunks.jsonl
-  extraction_failures: data/processed/extraction_failures.csv
+  chunks: /data/processed/chunks_800_120.jsonl
+  extraction_failures: /data/processed/extraction_failures.csv
 
 chunking:
   chunk_size: 800
