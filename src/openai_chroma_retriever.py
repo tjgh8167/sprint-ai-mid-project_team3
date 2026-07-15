@@ -67,8 +67,7 @@ class OpenAIChromaRetriever:
             )
 
         except Exception as e:                                                # ChromaDB에서 필터 조건이 잘못되었거나, 검색 중 오류가 발생하면 예외 처리, 강제 종료 방지
-            print(f"검색 중 오류 발생 (필터 조건 확인): {e}")                        # 오류 원인 및 로그 출력
-            return []
+            raise
 
         if not docs_and_scores:                                               # docs_and_scores가 비어있으면 (즉, 검색 결과가 없으면) 안내 메시지 출력
             return []
