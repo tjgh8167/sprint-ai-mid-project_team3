@@ -2,7 +2,7 @@ name: Discord PR Notification
 
 on:
   pull_request:
-    types: [opened, reopened, synchronized, closed]
+    types: [opened, reopened, synchronize, closed]
   pull_request_review:
     types: [submitted]
   issue_comment:
