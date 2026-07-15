@@ -10,7 +10,7 @@ def create_retriever(chunks: list[dict], retrieval_config: dict, profile: str | 
     if selected_profile == "baseline":
         return SimpleRetriever(chunks)
     if selected_profile == "openai":
-        return OpenAIChromaRetriever(chunks, profiles["openai"])
+        return OpenAIChromaRetriever(config = retrieval_config) # top_k가 openai 외부에 있으므로 retrieval_config를 전달하도록 변경
     if selected_profile == "local":
         return LocalChromaRetriever(chunks, profiles["local"])
 
