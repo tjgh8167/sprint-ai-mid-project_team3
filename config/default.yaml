@@ -22,10 +22,10 @@ retrieval:
       collection_name: bidmate_openai
     local:
       provider: huggingface
-      embedding_model: null
+      embedding_model: dragonkue/BGE-m3-ko # 0715 이태훈
       vector_db: chroma
       persist_directory: vector_db/local
-      collection_name: bidmate_local
+      collection_name: bidmate_localgit 
 
 generation:
   provider: baseline

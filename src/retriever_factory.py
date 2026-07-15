@@ -15,3 +15,5 @@ def create_retriever(chunks: list[dict], retrieval_config: dict, profile: str | 
         return LocalChromaRetriever(chunks, profiles["local"])
 
     raise ValueError(f"지원하지 않는 Retrieval 프로필입니다: {selected_profile}")
+
+    
