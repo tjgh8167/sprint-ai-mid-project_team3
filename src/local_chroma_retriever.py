@@ -1,28 +1,40 @@
-from typing import List, Dict, Any, Optional
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
+from typing import Dict, Any, List, Optional
 from langchain_core.documents import Document
+# 모든 환경에서 호환되도록 표준 community 패키지 경로로 변경
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import Chroma
 
 class LocalChromaRetriever:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, chunks: List[Dict[str, Any]], config: Dict[str, Any]):
         """
         Local Chroma Retriever 초기화
-        """
-        self.config = config
         
-        # 1. HuggingFace 로컬 임베딩 로드
+        Args:
+            chunks: 데이터 적재를 위한 청크 리스트 (retriever_factory에서 전달)
+            config: profiles["local"]에 해당하는 설정 딕셔너리
+        """
+        self.chunks = chunks
+        self.config = config  # 전달받은 config가 곧 local 설정입니다.
+        
+        # 1. HuggingFace 로컬 임베딩 로드 (default.yaml 구조와 일치)
+        model_name = self.config.get("embedding_model", "dragonkue/BGE-m3-ko")
+        cache_dir = self.config.get("cache_dir")
+        device = self.config.get("device", "cpu")
+        
         self.embeddings = HuggingFaceEmbeddings(
-            model_name=config["embedding"]["dragonkue/BGE-m3-ko"],
-            cache_folder=config["embedding"].get("cache_dir"),
-            model_kwargs={"device": config["embedding"].get("device", "cpu")},
+            model_name=model_name,
+            cache_folder=cache_dir,
+            model_kwargs={"device": device},
             encode_kwargs={"normalize_embeddings": True}  # 코사인 유사도 최적화
         )
         
         # 2. Chroma Vector DB 연결
+        chroma_config = self.config.get("chroma", {})
+        
         self.vector_store = Chroma(
-            collection_name=config["chroma"]["collection_name"],
+            collection_name=chroma_config.get("collection_name", "default_collection"),
             embedding_function=self.embeddings,
-            persist_directory=config["chroma"]["persist_directory"]
+            persist_directory=chroma_config.get("persist_directory")
         )
 
     def retrieve(
@@ -36,10 +48,9 @@ class LocalChromaRetriever:
         """
         메타데이터 필터가 적용된 유사도 검색 수행
         """
-        k = top_k or self.config["retriever"]["top_k"]
+        k = top_k or self.config.get("top_k", 4)
         
         # Chroma 메타데이터 필터 딕셔너리 동적 빌드
-        # ($and 연산자를 활용하여 다중 조건 충족)
         filter_conditions = []
         if org_name:
             filter_conditions.append({"org_name": org_name})
@@ -65,5 +76,3 @@ class LocalChromaRetriever:
     def add_documents(self, docs: List[Document]):
         """테스트 데이터 적재용 메서드"""
         self.vector_store.add_documents(docs)
-
-
