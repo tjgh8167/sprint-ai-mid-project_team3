@@ -48,7 +48,7 @@ def generate_answer(question: str, results: list[SearchResult], config: dict = N
     model_name = gen_config.get("model", "gpt-5-nano")
     temperature = gen_config.get("temperature", 0.1)
     top_p = gen_config.get("top_p", 0.95)
-    max_tokens = gen_config.get("max_tokens", 1000)
+    max_tokens = gen_config.get("max_tokens", 3000)
 
     # 2. LLM 및 체인 구성
     # gpt-5/o-시리즈(reasoning 모델)는 temperature/top_p가 1로 고정되어 있어
