@@ -10,7 +10,7 @@ from src.retriever_factory import create_retriever
 
 
 def load_config(path: str = "config/default.yaml") -> dict:
-    with Path(path).open("r", encoding="utf-8-sig") as f:
+    with Path(path).open("r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
