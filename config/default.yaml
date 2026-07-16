@@ -3,7 +3,7 @@ paths:
   normalized_metadata: /data/processed/metadata.csv
   raw_documents: /data/original_data/files
   chunks: /data/processed/chunks_800_120.jsonl
-  extraction_failures: data/processed/extraction_failures.csv
+  extraction_failures: /data/processed/extraction_failures.csv
 
 chunking:
   chunk_size: 800
