@@ -28,7 +28,16 @@ def run(
     config = load_config(config_path)
     chunks = load_chunks(config["paths"]["chunks"])
     retriever = create_retriever(chunks, config["retrieval"], profile)
-    results = retriever.search(question, top_k=config["retrieval"]["top_k"])
+
+    selected_profile = profile or config["retrieval"]["active_profile"]
+    try:
+        results = retriever.search(question, top_k=config["retrieval"]["top_k"])
+    except NotImplementedError as exc:
+        return {
+            "answer": f"'{selected_profile}' 프로필은 아직 준비되지 않았습니다.\n사유: {exc}",
+            "sources": [],
+        }
+
     return generate_answer(question, results, config)
 
 
@@ -45,6 +54,12 @@ def main(default_profile: str = "baseline") -> None:
 
     response = run(args.question, args.config, args.profile)
     print(response["answer"])
+
+    if response["sources"]:
+        print(f"\n[참고 문서 {len(response['sources'])}건]")
+        for src in response["sources"]:
+            file_name = src["metadata"].get("file_name", "출처 없음")
+            print(f"- {file_name} (chunk_id: {src['chunk_id']}, score: {src['score']})")
 
 
 if __name__ == "__main__":
