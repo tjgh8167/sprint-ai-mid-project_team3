@@ -21,7 +21,7 @@ retrieval:
       vector_db: chroma
       persist_directory: vector_db/openai
       collection_name: bidmate_openai
-      default_filters: {}                     # 기본 필터 로직
+      fetch_k: 50   # 부분 일치 검색 활용
     local:
       provider: huggingface
       embedding_model: null
