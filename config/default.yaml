@@ -22,6 +22,7 @@ retrieval:
       vector_db: chroma
       persist_directory: vector_db/openai
       collection_name: bidmate_openai
+      fetch_k: 50   # 부분 일치 검색 활용
     local:
       provider: huggingface
       embedding_model: null
