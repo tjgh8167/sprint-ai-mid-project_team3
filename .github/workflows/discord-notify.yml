@@ -1,0 +1,96 @@
+name: Discord PR Notification
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  notify-discord:
+    if: ${{ github.event_name != 'issue_comment' || github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build Discord embed
+        shell: bash
+        run: |
+          event="$GITHUB_EVENT_NAME"
+
+          case "$event" in
+            pull_request)
+              action="$(jq -r '.action' "$GITHUB_EVENT_PATH")"
+              number="$(jq -r '.number' "$GITHUB_EVENT_PATH")"
+              pr_title="$(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH")"
+              author="$(jq -r '.pull_request.user.login' "$GITHUB_EVENT_PATH")"
+              url="$(jq -r '.pull_request.html_url' "$GITHUB_EVENT_PATH")"
+              merged="$(jq -r '.pull_request.merged' "$GITHUB_EVENT_PATH")"
+
+              if [ "$action" = "opened" ] || [ "$action" = "reopened" ]; then
+                embed_title="🔔 새 PR이 열렸습니다!"
+                color=3447003
+              elif [ "$action" = "synchronize" ]; then
+                embed_title="📌 PR에 새 커밋이 푸시됐습니다!"
+                color=10181046
+              elif [ "$action" = "closed" ] && [ "$merged" = "true" ]; then
+                embed_title="✅ PR이 머지됐습니다!"
+                color=3066993
+              else
+                embed_title="📪 PR이 닫혔습니다."
+                color=9807270
+              fi
+
+              fields="$(jq -n --arg title "#$number $pr_title" --arg author "$author" '[{name: "제목", value: $title}, {name: "작성자", value: $author, inline: true}]')"
+              ;;
+            pull_request_review)
+              number="$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")"
+              pr_title="$(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH")"
+              author="$(jq -r '.sender.login' "$GITHUB_EVENT_PATH")"
+              state="$(jq -r '.review.state' "$GITHUB_EVENT_PATH")"
+              url="$(jq -r '.pull_request.html_url' "$GITHUB_EVENT_PATH")"
+
+              case "$state" in
+                approved) embed_title="✅ PR이 승인됐습니다!"; color=3066993 ;;
+                changes_requested) embed_title="🛠️ 수정 요청이 등록됐습니다!"; color=15105570 ;;
+                *) embed_title="💬 PR 리뷰가 등록됐습니다!"; color=10181046 ;;
+              esac
+              fields="$(jq -n --arg title "#$number $pr_title" --arg author "$author" '[{name: "제목", value: $title}, {name: "작성자", value: $author, inline: true}]')"
+              ;;
+            issue_comment|pull_request_review_comment)
+              if [ "$event" = "issue_comment" ]; then
+                number="$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")"
+                pr_title="$(jq -r '.issue.title' "$GITHUB_EVENT_PATH")"
+                embed_title="💬 PR 댓글이 등록됐습니다!"
+              else
+                number="$(jq -r '.pull_request.number' "$GITHUB_EVENT_PATH")"
+                pr_title="$(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH")"
+                embed_title="📝 코드 리뷰 댓글이 등록됐습니다!"
+              fi
+              author="$(jq -r '.sender.login' "$GITHUB_EVENT_PATH")"
+              url="$(jq -r '.comment.html_url' "$GITHUB_EVENT_PATH")"
+              color=10181046
+              fields="$(jq -n --arg title "#$number $pr_title" --arg author "$author" '[{name: "제목", value: $title}, {name: "작성자", value: $author, inline: true}]')"
+              ;;
+            *) exit 0 ;;
+          esac
+
+          jq -n --arg title "$embed_title" --arg url "$url" --argjson color "$color" --argjson fields "$fields" \
+            '{embeds: [{title: $title, url: $url, color: $color, fields: $fields, footer: {text: "GitHub Actions"}}], allowed_mentions: {parse: []}}' \
+            > discord-payload.json
+
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -H "Content-Type: application/json" \
+            --data @discord-payload.json \
+            "$DISCORD_WEBHOOK_URL"

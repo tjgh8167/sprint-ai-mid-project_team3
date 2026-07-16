@@ -1,8 +1,14 @@
 import json
+import zlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import olefile
 from pypdf import PdfReader
+
+
+HWP_PARA_TEXT_TAG = 67
+HWP_SINGLE_CONTROL_CHARS = {9, 10, 13, 24, 30, 31}
 
 
 @dataclass
@@ -13,25 +19,109 @@ class Chunk:
     metadata: dict
 
 
+# HWP 본문 스트림의 Section 번호를 숫자로 변환합니다.
+def _section_number(stream_path: list[str]) -> int:
+    return int(stream_path[-1].removeprefix("Section"))
+
+
+# HWP 본문에 포함된 제어문자를 제거하고 읽을 수 있는 텍스트로 정리합니다.
+def _clean_hwp_text(text: str) -> str:
+    cleaned = []
+    position = 0
+
+    while position < len(text):
+        code = ord(text[position])
+        if code >= 32:
+            cleaned.append(text[position])
+            position += 1
+        elif code in HWP_SINGLE_CONTROL_CHARS:
+            cleaned.append("\n" if code in {10, 13} else " ")
+            position += 1
+        else:
+            position += 8
+
+    return "".join(cleaned).strip()
+
+
+# HWP 5.x 파일의 압축된 본문 스트림을 열어 텍스트를 추출합니다.
+def _read_hwp(path: Path) -> str:
+    if not olefile.isOleFile(path):
+        raise ValueError("HWP 5.x OLE 문서가 아닙니다.")
+
+    paragraphs = []
+    with olefile.OleFileIO(path) as hwp:
+        if not hwp.exists("FileHeader") or not hwp.exists("BodyText"):
+            raise ValueError("HWP FileHeader 또는 BodyText 스트림이 없습니다.")
+
+        file_header = hwp.openstream("FileHeader").read()
+        if not file_header.startswith(b"HWP Document File"):
+            raise ValueError("지원하지 않는 HWP 문서입니다.")
+
+        compressed = bool(file_header[36] & 1)
+        section_paths = sorted(
+            (
+                stream_path
+                for stream_path in hwp.listdir()
+                if len(stream_path) == 2
+                and stream_path[0] == "BodyText"
+                and stream_path[1].startswith("Section")
+            ),
+            key=_section_number,
+        )
+
+        for stream_path in section_paths:
+            section = hwp.openstream(stream_path).read()
+            if compressed:
+                section = zlib.decompress(section, -15)
+
+            position = 0
+            while position + 4 <= len(section):
+                record_header = int.from_bytes(section[position : position + 4], "little")
+                position += 4
+                tag_id = record_header & 0x3FF
+                record_size = (record_header >> 20) & 0xFFF
+
+                if record_size == 0xFFF:
+                    if position + 4 > len(section):
+                        break
+                    record_size = int.from_bytes(section[position : position + 4], "little")
+                    position += 4
+
+                record = section[position : position + record_size]
+                position += record_size
+
+                if tag_id == HWP_PARA_TEXT_TAG:
+                    text = _clean_hwp_text(record.decode("utf-16le", errors="ignore"))
+                    if text:
+                        paragraphs.append(text)
+
+    return "\n".join(paragraphs)
+
+
+# 파일 확장자에 맞는 방식으로 TXT, PDF, HWP 문서의 본문을 읽습니다.
 def read_document(path: str | Path) -> str:
     path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"문서 파일을 찾을 수 없습니다: {path}")
+
     suffix = path.suffix.lower()
 
     if suffix in {".txt", ".md"}:
-        return path.read_text(encoding="utf-8-sig")
+        return path.read_text(encoding="utf-8-sig").strip()
 
     if suffix == ".pdf":
         reader = PdfReader(str(path))
         pages = [page.extract_text() or "" for page in reader.pages]
-        return "\n".join(pages)
+        return "\n\n".join(pages).strip()
 
     if suffix == ".hwp":
-        raise NotImplementedError("HWP parsing은 Data Engineer가 olefile 또는 hwp 변환기로 구현합니다.")
+        return _read_hwp(path).strip()
 
     raise ValueError(f"지원하지 않는 파일 형식입니다: {path.suffix}")
 
 
-def chunk_text(text: str, chunk_size: int = 800, chunk_overlap: int = 120) -> list[str]:
+# 추출한 본문을 지정한 크기와 중첩 길이에 따라 여러 청크로 나눕니다.
+def chunk_text(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
     cleaned = " ".join(text.split())
     if not cleaned:
         return []
@@ -48,12 +138,14 @@ def chunk_text(text: str, chunk_size: int = 800, chunk_overlap: int = 120) -> li
     return chunks
 
 
+# 문서 본문을 청킹하고 각 청크에 문서 ID와 메타데이터를 연결합니다.
 def build_chunks(
     file_path: str | Path,
     doc_id: str,
     metadata: dict | None = None,
-    chunk_size: int = 800,
-    chunk_overlap: int = 120,
+    *,
+    chunk_size: int,
+    chunk_overlap: int,
 ) -> list[Chunk]:
     path = Path(file_path)
     text = read_document(path)
@@ -74,6 +166,7 @@ def build_chunks(
     ]
 
 
+# 생성한 청크 목록을 한 줄에 한 청크씩 JSONL 파일로 저장합니다.
 def save_chunks_jsonl(chunks: list[Chunk], output_path: str | Path) -> None:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -83,11 +176,13 @@ def save_chunks_jsonl(chunks: list[Chunk], output_path: str | Path) -> None:
             f.write(json.dumps(asdict(chunk), ensure_ascii=False) + "\n")
 
 
+# 저장된 JSONL 파일을 읽어 청크 딕셔너리 목록으로 반환합니다.
 def load_chunks_jsonl(path: str | Path) -> list[dict]:
     with Path(path).open("r", encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
 
 
+# 실제 원본 데이터 없이 전체 RAG 흐름을 시험할 수 있는 샘플 청크를 만듭니다.
 def demo_chunks() -> list[dict]:
     text = (
         "가상 RFP 샘플 문서입니다. 발주기관은 가상디지털진흥원이고, "

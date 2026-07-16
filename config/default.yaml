@@ -2,6 +2,7 @@ paths:
   metadata: /data/original_data/data_list.csv
   raw_documents: /data/original_data/files
   chunks: samples/processed/sample_chunks.jsonl
+  extraction_failures: data/processed/extraction_failures.csv
 
 chunking:
   chunk_size: 800
@@ -28,8 +29,11 @@ retrieval:
       collection_name: bidmate_localgit 
 
 generation:
-  provider: baseline
-  model: null
+  provider: openai
+  model: gpt-5-nano
+  temperature: 0.1
+  top_p: 0.95
+  max_tokens: 3000
 
 experiments:
   advanced_search:

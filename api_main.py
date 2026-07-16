@@ -29,7 +29,7 @@ def run(
     chunks = load_chunks(config["paths"]["chunks"])
     retriever = create_retriever(chunks, config["retrieval"], profile)
     results = retriever.search(question, top_k=config["retrieval"]["top_k"])
-    return generate_answer(question, results)
+    return generate_answer(question, results, config)
 
 
 def main(default_profile: str = "baseline") -> None:
