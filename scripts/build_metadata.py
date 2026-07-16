@@ -134,7 +134,7 @@ def validate_metadata(metadata: pd.DataFrame) -> dict[str, object]:
     }
 
 
-# 표준 metadata.csv를 UTF-8 BOM 형식으로 저장합니다.
+# 표준 metadata.csv를 UTF-8 형식으로 저장합니다.
 def save_metadata(metadata: pd.DataFrame, output_path: str | Path) -> None:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
