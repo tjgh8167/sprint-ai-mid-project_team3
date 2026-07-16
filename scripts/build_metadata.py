@@ -53,7 +53,7 @@ REQUIRED_FIELDS = [
 
 # YAML 설정 파일을 읽습니다.
 def load_config(path: str | Path) -> dict:
-    with Path(path).open("r", encoding="utf-8-sig") as file:
+    with Path(path).open("r", encoding="utf-8") as file:
         return yaml.safe_load(file)
 
 
@@ -73,7 +73,7 @@ def clean_value(value: object) -> str:
 
 # 원본 data_list.csv를 Retriever 공통 metadata.csv 형식으로 변환합니다.
 def build_metadata(source_path: str | Path, raw_documents_path: str | Path) -> pd.DataFrame:
-    source = pd.read_csv(source_path, dtype=str, encoding="utf-8-sig")
+    source = pd.read_csv(source_path, dtype=str, encoding="utf-8")
     validate_source_columns(source)
 
     raw_documents_path = Path(raw_documents_path)
@@ -138,7 +138,7 @@ def validate_metadata(metadata: pd.DataFrame) -> dict[str, object]:
 def save_metadata(metadata: pd.DataFrame, output_path: str | Path) -> None:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    metadata.to_csv(output_path, index=False, encoding="utf-8-sig")
+    metadata.to_csv(output_path, index=False, encoding="utf-8")
 
 
 # 기존 청크의 metadata를 표준 metadata.csv 기준으로 보강합니다.
