@@ -78,7 +78,7 @@ class OpenAIChromaRetriever:
 
             if active_filters:
                 for key, value in active_filters.items():
-                    if not value:
+                    if value is None or str(value).strip() == "":    # 숫자 0은 정상 값으로 취급하고, None이거나 빈 문자열일 때만 건너뛰도록 수정
                         continue
                     
                     clean_filter_val = self.normalize_text(str(value)) # 필터 값 정규화
