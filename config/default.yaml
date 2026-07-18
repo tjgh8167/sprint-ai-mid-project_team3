@@ -26,7 +26,7 @@ retrieval:
       embedding_model: dragonkue/BGE-m3-ko # 0715 이태훈
       vector_db: chroma
       persist_directory: vector_db/local
-      collection_name: bidmate_localgit 
+      collection_name: bidmate_local
 
 generation:
   provider: openai
