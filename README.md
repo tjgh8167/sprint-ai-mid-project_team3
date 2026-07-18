@@ -76,6 +76,16 @@ RFP 문서 → 파싱·청킹 → chunks.jsonl → 임베딩·Chroma 검색 → 
 }
 ```
 
+### 실제 데이터 및 Vector DB 규칙
+
+- 실제 Retriever 입력 청크는 data/processed/chunks_800_120.jsonl을 사용합니다.
+- 기관명 메타데이터 키는 데이터 전처리 단계에서 정한 agency로 통일합니다. org_name, organization 등 다른 키는 사용하지 않습니다.
+- Vector DB 생성 시 chunk_id, doc_id, title, agency, file_name을 청크 metadata와 함께 저장합니다.
+- Vector DB 생성은 별도 빌드 스크립트에서 한 번만 수행합니다.
+  - chunks.jsonl -> 임베딩 -> Chroma Vector DB 저장
+- 질문 실행 시 Retriever는 이미 저장된 Vector DB를 열어 검색만 수행합니다.
+- OpenAI와 Local Retriever는 별도 Chroma DB를 사용하되, 동일한 청크 및 metadata 규격을 따릅니다.
+
 ## 5. 병렬 개발 방식
 
 ```text
