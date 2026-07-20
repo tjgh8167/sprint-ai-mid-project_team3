@@ -6,7 +6,7 @@ from langchain_community.vectorstores import Chroma
 def build_vector_db(chunks: List[Dict[str, Any]], config: Dict[str, Any]):
     """청크 데이터를 받아 Chroma Vector DB를 생성하고 저장하는 함수"""
     
-    model_name = config.get("embedding", "dragonkue/BGE-m3-ko")
+    model_name = config.get(" embedding_model", "dragonkue/BGE-m3-ko")
     cache_dir = config.get("cache_path")
     device = config.get("device", "cpu")
     
@@ -18,7 +18,7 @@ def build_vector_db(chunks: List[Dict[str, Any]], config: Dict[str, Any]):
     )
 
     persist_directory = config.get("persist_directory", "vector_db/local")
-    collection_name = config.get("collection_name", "bidmate_localgit")
+    collection_name = config.get("collection_name", "bidmate_local")
 
     # Document 객체 변환 (metadata에 chunk_id, doc_id 포함)
     documents = []

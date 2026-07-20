@@ -39,9 +39,8 @@ def _metadata_matches(metadata: dict, filters: dict | None) -> bool:
         return True
 
     for key, expected in filters.items():
-        # [수정 반영] 프로젝트 공통 규격: org_name이 들어와도 agency 키로 맵핑 유연성 처리
-        target_key = "org_name" if key == "agency" and "org_name" in metadata else key
-        actual = str(metadata.get(target_key, "")).lower()
+        #불필요한 org_name 매핑 로직 제거, 바로 key(agency) 값으로 타겟팅 처리
+        actual = str(metadata.get(key, "")).lower()
         if str(expected).lower() not in actual:
             return False
     return True
@@ -97,7 +96,8 @@ class LocalChromaRetriever:
             encode_kwargs={"normalize_embeddings": True}
         )
 
-        persist_directory = self.config.get("persist_directory", "vector_db/local")
+        # 기본 경로를 로컬 개발용이 아닌 지정하신 공유 벡터 DB 경로로 변경
+        persist_directory = self.config.get("persist_directory", "/data/processed/vector_db/local")
         collection_name = self.config.get("collection_name", "bidmate_localgit")
 
         # 실시간 적재(add_documents) 구문을 원천 차단하여 검색 지연 최소화 및 무결성 확보
