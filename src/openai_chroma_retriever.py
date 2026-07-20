@@ -2,12 +2,14 @@ import os
 import re
 import unicodedata
 from src.retriever import SearchResult
+from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 
 class OpenAIChromaRetriever:
 
     def __init__(self, config: dict):
+        load_dotenv()  # 환경변수(.env)에서 OPENAI_API_KEY 로드
         self.config = config
 
         # retrieval 설정이 config에 있는지 확인하고, 없으면 그냥 self.config 가져오고 있으면 retriever 가져오기
