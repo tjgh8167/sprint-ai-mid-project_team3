@@ -54,54 +54,132 @@ def build_db():
         before_count = vectorstore._collection.count()
         print(f"적재 전 Chroma DB 청크 수: {before_count}개")
     except Exception as e:
-        print(f"[경고] 기존 DB 상태를 확인할 수 없습니다: {e}")
+        print(f"[경고] 기존 DB 상태를 확인할 수 없습니다 (최초 생성일 수 있음): {e}")
         before_count = 0
 
-    # 텍스트 데이터 파싱
-    texts = []      # 실제 텍스트
-    metadatas = []  # 각 텍스트에 대한 데이터
-    ids = []        # 청크 별 ID (chunk_id)
-
-    for idx, chunk in enumerate(chunks):                            # 문서 로드 / 청킹하면서 생긴 metadata와 chunk_id를 기반으로 texts, metadatas, ids 생성
-        texts.append(chunk["text"])                                 # 본문을 texts에 추가
-
-        meta = chunk.get("metadata", {}).copy()                     # 텍스트의 metadata를 가져온다 copy = 직접 수정 방지
-        meta["chunk_id"] = chunk.get("chunk_id", f"chunk_{idx}")    # metadata의 chunk_id를 가져오는데 f"chunk_{idx}"는 chunk_id가 없을 경우 새로 만든다~
-        meta["doc_id"] = chunk.get("doc_id", "")                    # metadata의 doc_id를 가져오는데 없으면 빈 문자열로 설정 (사실 존재하니, chunk["doc_id"]로 가져와도 됨)
+    # 입력 받은 청크 데이터를 문서로 묶기 (doc_id)
+    incoming_docs = {}
+    for idx, chunk in enumerate(chunks):
+        meta = chunk.get("metadata", {}).copy()
+        chunk_id = chunk.get("chunk_id", f"chunk_{idx}")
+        doc_id = chunk.get("doc_id", meta.get("doc_id", ""))
         
-        metadatas.append(meta)                                      # metadatas에 위에서 만든 meta를 추가
-        ids.append(meta["chunk_id"])                                # 청크별 고유 식별 id (Vector DB에서 각 청크를 구분하기 위해 필요)
-
-    batch_size = openai_config.get("batch_size", 1000) # 한 번에 데이터베이스로 보낼 청크 단위 / 지정을 안 하면 오래 걸리기 때문에 배치사이즈 설정 필요
+        meta["chunk_id"] = chunk_id
+        meta["doc_id"] = doc_id
         
-    for i in range(0, total_input_chunks, batch_size):
-        # 전체 데이터에서 batch_size만큼 슬라이싱
-        batch_texts = texts[i : i + batch_size]
-        batch_metadatas = metadatas[i : i + batch_size]
-        batch_ids = ids[i : i + batch_size]
+        if doc_id not in incoming_docs:
+            incoming_docs[doc_id] = []
+            
+        incoming_docs[doc_id].append({
+            "id": chunk_id,
+            "text": chunk["text"],
+            "metadata": meta
+        })
 
-        current_batch_num = (i // batch_size) + 1
-        total_batches = (total_input_chunks + batch_size - 1) // batch_size
+    # 통계를 위한 카운터
+    total_existing_chunks_processed = 0 # 기존 전체 청크 수
+    stat_unchanged = 0                  # 변경 되지 않은 청크 (유지)
+    stat_modified = 0                   # 변경 된 청크
+    stat_deleted = 0                    # 삭제된 청크
+    stat_added = 0                      # 추가된 청크
+
+    # 실제 DB 작업에 쓰일 리스트 모음
+    to_upsert_texts = []
+    to_upsert_metadatas = []
+    to_upsert_ids = []
+    to_delete_ids = []
+
+    # 기존 DB 데이터와 새로운 청크 파일 비교 분석
+    for doc_id, new_chunks in incoming_docs.items():
         
-        # 몇 번째 배치가 들어가는지 모니터링 로그 출력
-        print(f"[{current_batch_num}/{total_batches}] {i} ~ {min(i + batch_size, total_input_chunks)}번째 청크 저장 중")
+        try:                                     # 현재 DB에서 새롭게 받은 문서(doc_id)에 해당하는 기존 청크들을 직접 조회
+            existing = vectorstore.get(where={"doc_id": doc_id}, include=["documents", "metadatas"])
+            existing_ids = existing.get("ids", [])
+            existing_docs = existing.get("documents", [])
+            existing_metadatas = existing.get("metadatas", [])
+        except Exception:
+            existing_ids, existing_docs, existing_metadatas = [], [], []
+
+        # 기존 DB에 있던 청크 데이터 수 += (유지, 수정, 삭제 청크 수)
+        total_existing_chunks_processed += len(existing_ids)
+
+        # 빠른 비교를 위해 기존 데이터를 딕셔너리로 맵핑
+        existing_map = {}
+        for eid, edoc, emeta in zip(existing_ids, existing_docs, existing_metadatas):
+            existing_map[eid] = {"text": edoc, "metadata": emeta}
+
+        # 새 파일에 존재하는 청크 ID들을 기록 (삭제된 청크 구별용)
+        seen_new_ids = set()
+
+        for nc in new_chunks:
+            nid = nc["id"]
+            ntext = nc["text"]
+            nmeta = nc["metadata"]
+            seen_new_ids.add(nid)
+
+            if nid in existing_map:
+                # 기존에 있던 청크인 경우: 본문이나 메타데이터가 바뀌었는지 검사
+                if existing_map[nid]["text"] != ntext or existing_map[nid]["metadata"] != nmeta:
+                    stat_modified += 1
+                    to_upsert_texts.append(ntext)
+                    to_upsert_metadatas.append(nmeta)
+                    to_upsert_ids.append(nid)
+                else:
+                    stat_unchanged += 1
+            else:
+                # 완전히 처음 보는 새로운 청크인 경우: 추가 대상으로 등록
+                stat_added += 1
+                to_upsert_texts.append(ntext)
+                to_upsert_metadatas.append(nmeta)
+                to_upsert_ids.append(nid)
+
+        # 기존 DB에는 있었으나, 새 파일에서는 없어진 청크인 경우: 삭제 대상으로 등록
+        for eid in existing_map:
+            if eid not in seen_new_ids:
+                stat_deleted += 1
+                to_delete_ids.append(eid)
+
+    # 정보가 사라진 청크 데이터 삭제
+    if to_delete_ids:
+        print(f"더 이상 존재하지 않는 구버전 청크 {len(to_delete_ids)}개 삭제 중...")
+        vectorstore.delete(ids=to_delete_ids)
+
+    # 추가 및 정보가 변경된 청크 저장
+    total_upsert_count = len(to_upsert_ids)
+    if total_upsert_count > 0:
+        batch_size = openai_config.get("batch_size", 1000)
+        print(f"추가(변경)된 청크 {total_upsert_count}개 저장 중")
         
-        # 실제로 Vector DB에 배치 적재
-        vectorstore.add_texts(
-        texts=batch_texts,
-        metadatas=batch_metadatas,
-        ids=batch_ids
-    )
+        for i in range(0, total_upsert_count, batch_size):
+            batch_texts = to_upsert_texts[i : i + batch_size]
+            batch_metadatas = to_upsert_metadatas[i : i + batch_size]
+            batch_ids = to_upsert_ids[i : i + batch_size]
 
-    # 벡터 DB 적재 후 청크 수 after_count 로 명시
-    after_count = vectorstore._collection.count()
-    print(f"최종 Chroma DB에 저장 된 청크 수: {after_count}개") # 시각적 확인
-
-    if after_count >= total_input_chunks:
-        print(f"모든 청크가 성공적으로 {persist_directory}에 저장 되었습니다.")
+            current_batch_num = (i // batch_size) + 1
+            total_batches = (total_upsert_count + batch_size - 1) // batch_size
+            
+            print(f"[{current_batch_num}/{total_batches}] {i} ~ {min(i + batch_size, total_upsert_count)}번째 대상 처리 중")
+            vectorstore.add_texts(
+                texts=batch_texts,
+                metadatas=batch_metadatas,
+                ids=batch_ids
+            )
     else:
-        print("입력된 청크 수와 DB의 청크 수가 다릅니다. (중복된 ID가 병합되었을 수 있습니다.)")
-        print(f"입력된 청크 수: {total_input_chunks}, DB 청크 수: {after_count}")
+        print("업데이트할 내용이 없습니다. VectorDB 내 모든 데이터가 이미 최신 상태입니다.")
+
+    total_details = stat_unchanged + stat_modified + stat_deleted + stat_added
+    after_count = vectorstore._collection.count()
+
+    print("== VectorDB 최신화 완료 ==")
+    print(f" 기존 청크 수: {total_existing_chunks_processed}개")
+    print(f" 최신화 후 최종 청크 수: {after_count}개")
+    print("-"*40)
+    print(f" == 세부 변경 내역 총 {total_details}개 ==")
+    print(f" - 유지 : {stat_unchanged}개")
+    print(f" - 수정 : {stat_modified}개")
+    print(f" - 삭제 : {stat_deleted}개")
+    print(f" - 추가 : {stat_added}개")
+    print("="*40 + "\n")
 
 if __name__ == "__main__":
     build_db()
