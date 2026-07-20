@@ -25,8 +25,14 @@ retrieval:
       provider: huggingface
       embedding_model: dragonkue/BGE-m3-ko # 0715 이태훈
       vector_db: chroma
-      persist_directory: vector_db/local
+      persist_directory: data/processed/vector_db/loca
       collection_name: bidmate_local
+      cache_path: /data/processed/model_cache
+      device: cpu
+
+    
+
+
 
 generation:
   provider: openai
@@ -40,3 +46,5 @@ experiments:
     - mmr
     - hybrid
     - rerank
+
+
