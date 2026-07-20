@@ -11,7 +11,7 @@ chunking:
 
 retrieval:
   active_profile: baseline
-  top_k: 5
+  top_k: 5 # fetch_k 적용으로 실제 검색 시 가져올 상위 결과 수 조정 (3 -> 5)
   search_method: similarity
   profiles:
     baseline:
