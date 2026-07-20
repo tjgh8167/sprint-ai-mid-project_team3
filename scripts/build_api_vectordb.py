@@ -179,7 +179,7 @@ def build_db():
     print(f" - 수정 : {stat_modified}개")
     print(f" - 삭제 : {stat_deleted}개")
     print(f" - 추가 : {stat_added}개")
-    print("="*40 + "\n")
+    print("-"*40)
 
 if __name__ == "__main__":
     build_db()
