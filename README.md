@@ -76,6 +76,16 @@ RFP 문서 → 파싱·청킹 → chunks.jsonl → 임베딩·Chroma 검색 → 
 }
 ```
 
+### 실제 데이터 및 Vector DB 규칙
+
+- 실제 Retriever 입력 청크는 data/processed/chunks_800_120.jsonl을 사용합니다.
+- 기관명 메타데이터 키는 데이터 전처리 단계에서 정한 agency로 통일합니다. org_name, organization 등 다른 키는 사용하지 않습니다.
+- Vector DB 생성 시 chunk_id, doc_id, title, agency, file_name을 청크 metadata와 함께 저장합니다.
+- Vector DB 생성은 별도 빌드 스크립트에서 한 번만 수행합니다.
+  - chunks.jsonl -> 임베딩 -> Chroma Vector DB 저장
+- 질문 실행 시 Retriever는 이미 저장된 Vector DB를 열어 검색만 수행합니다.
+- OpenAI와 Local Retriever는 별도 Chroma DB를 사용하되, 동일한 청크 및 metadata 규격을 따릅니다.
+
 ## 5. 병렬 개발 방식
 
 ```text
@@ -154,6 +164,49 @@ python evaluate.py --profile local
 
 `sample_rfp.txt`는 실제 기관이나 사업과 관련 없는 가상 문서입니다.
 
+### CLI 데모 출력 예시
+
+`baseline` 프로필로 질문하면 질문 → Profile → 답변 → 출처 순서로 정리되어 출력됩니다.
+
+```
+python api_main.py "한영대학교 특성화 맞춤형 교육환경 구축 사업의 예산과 수행 기간은 어떻게 돼?" --profile baseline
+```
+
+예상 출력:
+
+```
+[질문] 한영대학교 특성화 맞춤형 교육환경 구축 사업의 예산과 수행 기간은 어떻게 돼?
+[Profile] baseline
+
+[답변]
+- 예산: 130,000,000원(VAT 포함) 범위 내입니다 [2].
+- 수행기간: 계약일로부터 3개월이며, 안정화기간 1개월 포함입니다. 다만 기간은 학교 사정과 용역대상자와의 협의에 따라 조정될 수 있습니다 [2].
+
+참고문서: 한영대학_한영대학교 특성화 맞춤형 교육환경 구축 - 트랙운영 학사정보.hwp
+
+[출처 3건]
+1. 한국산업단지공단_산단 안전정보시스템 1차 구축 용역.hwp | 기관: 한국산업단지공단 | chunk_id: doc_095_chunk_0003 | score: 0.1592
+2. 한영대학_한영대학교 특성화 맞춤형 교육환경 구축 - 트랙운영 학사정보.hwp | 기관: 한영대학 | chunk_id: doc_001_chunk_0001 | score: 0.1585
+3. 한국산업단지공단_산단 안전정보시스템 1차 구축 용역.hwp | 기관: 한국산업단지공단 | chunk_id: doc_095_chunk_0007 | score: 0.1558
+```
+
+검색 결과가 없을 때는 출처 건수가 0건으로 표시됩니다.
+
+```
+python api_main.py "존재하지 않는 사업 문의" --filters '{"agency": "존재하지-않는-기관"}'
+```
+
+예상 출력:
+
+```
+[질문] 존재하지 않는 사업 문의
+[Profile] baseline
+
+[답변]
+관련 문서 내용을 찾지 못했습니다. 원본 문서나 검색 조건을 다시 확인해 주세요.
+
+[출처 0건]
+```
 ## 8. 실험 순서
 
 1. 가상 RFP로 baseline End-to-End 실행을 확인합니다.
