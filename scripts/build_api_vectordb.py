@@ -13,7 +13,7 @@ def build_db():
         return
 
     # 설정 및 데이터 로드
-    yaml_path = "../config/default.yaml"
+    yaml_path = "./config/default.yaml"
     with open(yaml_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
@@ -54,7 +54,7 @@ def build_db():
         before_count = vectorstore._collection.count()
         print(f"적재 전 Chroma DB 청크 수: {before_count}개")
     except Exception as e:
-        print(f"[경고] 기존 DB 상태를 확인할 수 없습니다 (최초 생성일 수 있음): {e}")
+        print(f"[경고] 기존 DB 상태를 확인할 수 없습니다: {e}")
         before_count = 0
 
     # 텍스트 데이터 파싱
