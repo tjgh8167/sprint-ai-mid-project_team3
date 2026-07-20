@@ -30,8 +30,8 @@ def run(
     config = load_config(config_path)
     chunks = load_chunks(config["paths"]["chunks"])
     retriever = create_retriever(chunks, config["retrieval"], profile)
-
     selected_profile = profile or config["retrieval"]["active_profile"]
+
     try:
         results = retriever.search(question, top_k=config["retrieval"]["top_k"], filters=filters)
     except NotImplementedError as exc:
@@ -41,6 +41,26 @@ def run(
         }
 
     return generate_answer(question, results, config)
+
+
+# 질문/profile/답변/출처(문서·기관·chunk_id·score)를 CLI에 순서대로 정리해 출력한다.
+# 검색 결과가 없으면 출처 건수가 0건으로 명확히 표시된다.
+def print_result(question: str, profile: str, response: dict) -> None:
+    print(f"[질문] {question}")
+    print(f"[Profile] {profile}\n")
+    print("[답변]")
+    print(response["answer"])
+
+    sources = response["sources"]
+    print(f"\n[출처 {len(sources)}건]")
+    for idx, src in enumerate(sources, start=1):
+        metadata = src.get("metadata", {})
+        file_name = metadata.get("file_name", "출처 없음")
+        agency = metadata.get("agency", "기관 정보 없음")
+        chunk_id = src.get("chunk_id", "-")
+        score = src.get("score")
+        score_text = f"{score:.4f}" if isinstance(score, (int, float)) else "-"
+        print(f"{idx}. {file_name} | 기관: {agency} | chunk_id: {chunk_id} | score: {score_text}")
 
 
 def main(default_profile: str = "baseline") -> None:
@@ -54,20 +74,13 @@ def main(default_profile: str = "baseline") -> None:
     )
     # 필터 로직 추가
     parser.add_argument("--filters", help="검색 필터를 JSON 형식으로 입력 (예: '{\"agency\": \"가상디지털진흥원\"}')")
-
     args = parser.parse_args()
 
     # JSON 문자열을 딕셔너리로 변환, 필터 로직
     filter_dict = json.loads(args.filters) if args.filters else None
 
     response = run(args.question, args.config, args.profile, filter_dict)
-    print(response["answer"])
-
-    if response["sources"]:
-        print(f"\n[참고 문서 {len(response['sources'])}건]")
-        for src in response["sources"]:
-            file_name = src["metadata"].get("file_name", "출처 없음")
-            print(f"- {file_name} (chunk_id: {src['chunk_id']}, score: {src['score']})")
+    print_result(args.question, args.profile, response)
 
 
 if __name__ == "__main__":
