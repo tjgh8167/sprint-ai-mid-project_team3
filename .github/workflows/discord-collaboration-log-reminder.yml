@@ -1,0 +1,22 @@
+name: Discord Collaboration Log Reminder
+
+on:
+  schedule:
+    - cron: "50 9 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  notify-discord:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send collaboration log reminder
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          jq -n \
+            --arg content "협업일지를 작성해주세요" \
+            '{content: $content, allowed_mentions: {parse: []}}' \
+            | curl --fail-with-body --silent --show-error \
+                -H "Content-Type: application/json" \
+                --data @- \
+                "$DISCORD_WEBHOOK_URL"
