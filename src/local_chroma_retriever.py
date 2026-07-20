@@ -1,7 +1,8 @@
 from typing import Dict, Any, List, Optional
 from langchain_core.documents import Document
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+# [수정] deprecated 경고 해결을 위해 최신 전용 패키지로 변경
+from langchain_chroma import Chroma
 
 # 프로젝트 통합 공통 계약 규격(SearchResult) 임포트 (chunk_id, doc_id 포함)
 from src.retriever import SearchResult
@@ -13,11 +14,11 @@ class LocalChromaRetriever:
         """
         Local Chroma Retriever 초기화 (질문 시점에는 저장된 Vector DB 로드만 수행)
         """
-        self.chunks = chunks  # 질문 시점에는 일반적으로 빈 리스트([])가 유입되거나 무시됩니다.
+        self.chunks = chunks  # 질문 시점에는 일반적으로 빈 리스트([])가 유입되거나 무시.
         self.config = config
         
-        # default.yaml 구조 정렬 및 맵핑 일치
-        model_name = self.config.get("embedding", "dragonkue/BGE-m3-ko")
+        # [수정] 설정 파일(default.yaml 등)의 규격에 맞춰 'embedding' 대신 'embedding_model'로 명확히 조회
+        model_name = self.config.get("embedding_model", "dragonkue/BGE-m3-ko")
         cache_dir = self.config.get("cache_path")
         device = self.config.get("device", "cpu")
         
@@ -32,10 +33,11 @@ class LocalChromaRetriever:
         persist_directory = self.config.get("persist_directory", "vector_db/local")
         collection_name = self.config.get("collection_name", "bidmate_localgit")
         
-        # 실시간 적재(add_documents) 구문을 완전히 제거하여 검색 지연 최소화 및 동기화 무결성 확보
+        # [참고] langchain-chroma 버전에서는 persist_directory와 collection_name을 기반으로 
+        # 실시간 적재 없이 기존 물리 DB를 Read-only 형태로 안전하게 로드.
         self.vector_store = Chroma(
             collection_name=collection_name,
-            embedding_function=self.embeddings,
+            embedding_function=self.embeddings, # LangChain 내부 인자명은 embedding_function
             persist_directory=persist_directory
         )
 
@@ -43,7 +45,7 @@ class LocalChromaRetriever:
         self, 
         query: str, 
         top_k: Optional[int] = None,
-        agency: Optional[str] = None,       #  org_name이 아닌 'agency' 필터 키로 통일
+        agency: Optional[str] = None,       # org_name이 아닌 'agency' 필터 키로 통일
         project_name: Optional[str] = None,
         doc_id: Optional[str] = None
     ) -> List[SearchResult]:
@@ -55,7 +57,6 @@ class LocalChromaRetriever:
         # Chroma 메타데이터 필터 딕셔너리 동적 빌드
         filter_conditions = []
         if agency:
-            # 공통 전처리 규격에 매칭되도록 쿼리 타깃 키를 agency로 고정
             filter_conditions.append({"agency": agency})
         if project_name:
             filter_conditions.append({"project_name": project_name})
@@ -68,8 +69,6 @@ class LocalChromaRetriever:
         elif len(filter_conditions) > 1:
             search_filter = {"$and": filter_conditions}
 
-        # 무자비한 Threshold 필터링으로 0건을 반환할 여지가 있는_relevance_scores 대신 
-        # 점수 손실이 전혀 없는 순수 거리 기반 연산 수식 호출
         try:
             docs_with_scores = self.vector_store.similarity_search_with_score(
                 query=query,
@@ -77,6 +76,7 @@ class LocalChromaRetriever:
                 filter=search_filter
             )
         except Exception:
+            # 필터 구조 충돌 예외 발생 시 인덱스 안정성 마진 확보를 위해 필터 없이 검색
             docs_with_scores = self.vector_store.similarity_search_with_score(
                 query=query,
                 k=k
@@ -101,4 +101,5 @@ class LocalChromaRetriever:
 
     def add_documents(self, docs: List[Document]):
         """별도 DB 빌드 스크립트(scripts/build_local_vectordb.py)에서 인덱싱 단행 시 호출할 통로 제공"""
+        # [참고] langchain_chroma 패키지 내부적으로 동적 추가 및 동기화가 자동 처리.
         self.vector_store.add_documents(docs)
