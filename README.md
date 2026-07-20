@@ -78,13 +78,17 @@ RFP 문서 → 파싱·청킹 → chunks.jsonl → 임베딩·Chroma 검색 → 
 
 ### 실제 데이터 및 Vector DB 규칙
 
-- 실제 Retriever 입력 청크는 data/processed/chunks_800_120.jsonl을 사용합니다.
+- 실제 Retriever 입력 청크는 `/data/processed/chunks_800_120.jsonl`을 사용합니다.
+- 원본 문서는 `/data/original_data/files`, 원본 메타데이터는 `/data/original_data/data_list.csv`, 정규화 메타데이터는 `/data/processed/metadata.csv`를 사용합니다.
 - 기관명 메타데이터 키는 데이터 전처리 단계에서 정한 agency로 통일합니다. org_name, organization 등 다른 키는 사용하지 않습니다.
-- Vector DB 생성 시 chunk_id, doc_id, title, agency, file_name을 청크 metadata와 함께 저장합니다.
+- Vector DB 생성 시 청크의 `metadata`를 통째로 보존하고, `chunk_id`, `doc_id`를 추가합니다. 최소 공통 컬럼은 `chunk_id`, `doc_id`, `title`, `project_name`, `agency`, `file_name`, `file_type`, `page`, `source_path`입니다.
+- `title`은 사용자에게 보여 주는 문서 출처 제목, `project_name`은 사업명 검색·필터용으로 구분하여 둘 다 보존합니다.
 - Vector DB 생성은 별도 빌드 스크립트에서 한 번만 수행합니다.
   - chunks.jsonl -> 임베딩 -> Chroma Vector DB 저장
 - 질문 실행 시 Retriever는 이미 저장된 Vector DB를 열어 검색만 수행합니다.
-- OpenAI와 Local Retriever는 별도 Chroma DB를 사용하되, 동일한 청크 및 metadata 규격을 따릅니다.
+- OpenAI와 Local Retriever는 별도 Chroma DB를 사용하되, 동일한 청크 및 metadata·검색 결과 규격을 따릅니다. Local DB 빌더는 같은 계약으로 별도 PR에서 추가합니다.
+- 공유 저장 경로는 OpenAI `/data/processed/vector_db/openai`, Local `/data/processed/vector_db/local`로 통일합니다. 개인 홈 디렉터리나 프로젝트 상대 경로에는 저장하지 않습니다.
+- 청크 내용, 청킹 설정(`chunk_size`, `chunk_overlap`), 임베딩 모델, collection 이름이 바뀌면 기존 컬렉션을 삭제하고 다시 생성합니다. 청크 수만으로 최신 여부를 판단하지 않습니다.
 
 ## 5. 병렬 개발 방식
 
@@ -116,7 +120,8 @@ sprint-ai-mid-project_team3/
 │   ├── raw/sample_rfp.txt             # 병렬 개발용 가상 RFP
 │   └── processed/sample_chunks.jsonl
 ├── scripts/
-│   └── build_chunks.py
+│   ├── build_chunks.py                # 실제 PDF/HWP -> 공통 chunks JSONL
+│   └── build_api_vectordb.py          # OpenAI 임베딩 -> OpenAI Chroma DB
 ├── src/
 │   ├── parser_chunker.py              # Data 담당
 │   ├── retriever.py                   # 공통 결과 형식과 baseline
@@ -130,10 +135,10 @@ sprint-ai-mid-project_team3/
 └── evaluate.py                        # 프로필별 평가
 ```
 
-Vector DB는 Git에 올리지 않고 VM에 분리해 저장합니다.
+Vector DB는 Git에 올리지 않고 VM 공유 경로에 분리해 저장합니다.
 
 ```text
-vector_db/
+/data/processed/vector_db/
 ├── openai/
 └── local/
 ```
@@ -183,9 +188,11 @@ python evaluate.py --profile local
 - `retrieval.top_k`: 반환할 청크 수
 - `retrieval.search_method`: `similarity`, 이후 `mmr`, `hybrid`, `rerank`
 - `retrieval.profiles.*.embedding_model`: 각 담당자가 선정한 임베딩 모델
+- `retrieval.profiles.*.persist_directory`, `collection_name`: Retriever별 공유 Chroma DB 저장 위치와 컬렉션 이름
 - `generation.provider`, `generation.model`: Generation 담당자가 선정한 LLM
 
 모델명과 실험값은 코드에 직접 적지 않고 설정 파일과 실험 기록에 남깁니다.
+동일한 값을 코드에 직접 작성하지 않으며, 설정이 없을 때의 fallback 값도 필요한 경우에만 코드와 YAML에서 같은 기준으로 관리합니다.
 
 ## 10. 협업 규칙
 
@@ -226,3 +233,10 @@ python evaluate.py --profile local
 | GitHub Project | 팀장 Project URL 확정 후 기입 |
 | 협업일지 | [협업일지 링크](https://docs.google.com/spreadsheets/d/1LoEBOuxMkzjaf2hdq9GiLNaeNl8UUU9WKPQUzh2PhEM/edit?usp=drive_link) |
 | 보고서 작성 | [보고서 링크](https://canva.link/q0494iur016u7uq) |
+
+### 협업일지 Discord 알림
+
+- `.github/workflows/discord-collaboration-log-reminder.yml`이 평일 오후 6시 50분(KST, UTC 09:50)에 Discord로 `협업일지를 작성해주세요`를 전송합니다.
+- 예약 실행은 기본 브랜치 `main`에 머지된 워크플로만 동작합니다.
+- Repository Settings > Secrets and variables > Actions에 `DISCORD_WEBHOOK_URL` Secret을 등록해야 합니다. Webhook URL은 코드나 README에 넣지 않습니다.
+- Actions 탭에서 `Discord Collaboration Log Reminder`를 선택한 뒤 `Run workflow`로 수동 발송 테스트를 할 수 있습니다.
