@@ -1,6 +1,7 @@
 import yaml
 import json
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
@@ -40,6 +41,10 @@ def build_db():
     persist_directory = openai_config.get("persist_directory", "vector_db/openai")
     collection_name = openai_config.get("collection_name", "bidmate_openai")
 
+    chunking_config = config.get("chunking", {})
+    chunk_size = chunking_config.get("chunk_size", 800)
+    chunk_overlap = chunking_config.get("chunk_overlap", 120)
+
     # 임베딩 모델 초기화
     embeddings = OpenAIEmbeddings(model=embedding_model)
 
@@ -49,6 +54,45 @@ def build_db():
         embedding_function=embeddings,
         persist_directory=persist_directory
     )
+
+    # 옵션 변경 감지 로직
+    os.makedirs(persist_directory, exist_ok=True)               # persist_directory에 새로운 파일 제작
+    state_file = Path(persist_directory) / "param_state.json"   # 옵션 값 저장을 위한 param_state.json 생성
+    old_state = {}
+
+    # 이미 param_state를 생성한 기록이 있다면 old_state로 가져와서 읽기
+    if state_file.exists():
+        with open(state_file, "r", encoding="utf-8") as f:
+            old_state = json.load(f)
+
+    # 옵션이 바뀌지 않았다고 우선 설정
+    is_option_changed = False
+
+    is_model_changed = old_state.get("embedding_model") and old_state.get("embedding_model") != embedding_model
+    is_size_changed = old_state.get("chunk_size") and old_state.get("chunk_size") != chunk_size
+    is_overlap_changed = old_state.get("chunk_overlap") and old_state.get("chunk_overlap") != chunk_overlap
+
+    # 3가지 중 하나라도 바뀌었다면 is_option_changed가 True가 됨
+    is_option_changed = is_model_changed or is_size_changed or is_overlap_changed
+
+    if is_option_changed:
+        print("Vector DB 환경 설정 변경이 감지되었습니다!")
+        # 변경된 파라미터만 출력
+        if is_model_changed: print(f" - 임베딩 모델: {old_state.get('embedding_model')} -> {embedding_model}")
+        if is_size_changed: print(f" - 청크 크기: {old_state.get('chunk_size')} -> {chunk_size}")
+        if is_overlap_changed: print(f" - 청크 중첩: {old_state.get('chunk_overlap')} -> {chunk_overlap}")
+        print("충돌 방지를 위해 기존 DB를 초기화하고 처음부터 재구축합니다.")
+
+        # 기존 Vector DB 삭제
+        vectorstore.delete_collection()
+
+        # 재 구축
+        vectorstore = Chroma(
+            collection_name=collection_name,
+            embedding_function=embeddings,
+            persist_directory=persist_directory
+        )
+
     # 로깅: 적재 전 DB 청크 수 확인
     try:
         before_count = vectorstore._collection.count()
@@ -83,6 +127,29 @@ def build_db():
     stat_deleted = 0                    # 삭제된 청크
     stat_added = 0                      # 추가된 청크
 
+    # 없어진 정보를 삭제하는 로직 추가
+    if not is_option_changed and before_count > 0:              # 완전히 DB를 삭제한 것이 아닌 기존 DB가 한개라도 남아 있다면
+        all_db_data = vectorstore.get(include=["metadatas"])    # 기존 DB의 벡터데이터를 긁어옴
+        all_db_doc_ids = set()
+
+        for meta in all_db_data.get("metadatas", []):           # 메타데이터에서 doc_id 만 모아서 set으로 저장
+            if meta and "doc_id" in meta:
+                all_db_doc_ids.add(meta["doc_id"])
+        
+        incoming_doc_ids = set(incoming_docs.keys())            # 새로 들어온 데이터도 doc_id 만 따로 set으로 저장
+        completely_deleted_doc_ids = all_db_doc_ids - incoming_doc_ids  # 원래 있던 doc_id에서 새로들어온 doc_id를 뺌, 그럼 통째로 사라진 파일에 대해 파악 가능
+        
+        for d_id in completely_deleted_doc_ids:                 # 사라진 문서들의 doc_id를 돌며 삭제 
+            # 삭제 전, 해당 문서의 청크 개수만 가볍게 조회 후 삭제
+            chunks_to_delete = vectorstore.get(where={"doc_id": d_id}, include=[])
+            deleted_chunks_count = len(chunks_to_delete.get("ids", []))
+            
+            print(f"더 이상 존재하지 않는 문서 삭제 중 (doc_id: {d_id}, 청크 {deleted_chunks_count}개)")
+            vectorstore.delete(where={"doc_id": d_id})          # 사라진 문서는 삭제 처리
+            
+            total_existing_chunks_processed += deleted_chunks_count # 삭제된 청크만큼 청크 status에 추가
+            stat_deleted += deleted_chunks_count                    # 삭제된 청크 갯수 추가
+        
     # 실제 DB 작업에 쓰일 리스트 모음
     to_upsert_texts = []
     to_upsert_metadatas = []
@@ -166,6 +233,13 @@ def build_db():
             )
     else:
         print("업데이트할 내용이 없습니다. VectorDB 내 모든 데이터가 이미 최신 상태입니다.")
+
+    with open(state_file, "w", encoding="utf-8") as f:      # 업데이트 된 내용을 param_state.json파일에 최신화
+        json.dump({                                         # 들어갈 내용
+            "embedding_model": embedding_model,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap
+        }, f, indent=4)                                     # 들여쓰기 (하드코딩 사유: 들여쓰기라 굳이..?)
 
     total_details = stat_unchanged + stat_modified + stat_deleted + stat_added
     after_count = vectorstore._collection.count()
