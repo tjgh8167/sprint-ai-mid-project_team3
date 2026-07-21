@@ -4,7 +4,8 @@ from dataclasses import asdict
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 
 from src.retriever import SearchResult
@@ -22,6 +23,9 @@ SYSTEM_RULE = (
     "   답변 본문에서 근거로 사용한 문장 뒤에는 해당 내용을 가져온 문서 번호를 [1], [2]처럼 대괄호로 표기할 것. 여러 문서를 종합했다면 [1][2]처럼 이어서 표기할 것.\n"
     "   한 문장 안에서 인용 번호는 한 번만 표기할 것. 같은 문장의 중간과 끝에 동일한 번호를 중복해서 넣지 말 것.\n"
     "4. 사용자가 읽기 편하도록 적절히 글머리 기호(-, *)를 사용하여 한국어로 작성할 것.\n\n"
+    "[대화 이력 처리 원칙]\n"
+    "5. 이전 대화(history)가 있다면, 후속 질문에서 기관명·사업명을 다시 언급하지 않아도 직전 대화에서 다룬 기관/사업/주제를 이어받아 답변할 것.\n"
+    "   단, 새 질문이 다른 기관명이나 사업명을 명확히 새로 언급하면 이전 대화 내용을 끌어오지 말고 새 질문이 가리키는 대상만을 기준으로 답변할 것.\n\n"
     "[출력 어조 규칙]\n"
     "- 모든 답변은 신뢰감을 주는 **정중한 해요체/하십시오체('~합니다', '~안내해 드립니다')** 또는 **깔끔한 명사형/개조식(~함, ~기재)** 중 하나로 일관되게 작성할 것.\n"
     "- 반말, 혼잣말, 혹은 문장이 중간에 끊기는 현상이 절대 없도록 문장 끝맺음을 완벽하게 마무리할 것."
@@ -41,21 +45,26 @@ def build_context(results: list[SearchResult]) -> str:
     return "\n\n".join(context_blocks)
 
 
-def generate_answer(question: str, results: list[SearchResult], config: dict = None) -> dict:
-    if not results:
-        return {
-            "answer": "관련 문서 내용을 찾지 못했습니다. 원본 문서나 검색 조건을 다시 확인해 주세요.",
-            "sources": [],
-        }
+def build_history_messages(history: list[dict] | None, max_turns: int) -> list:
+    """이전 대화(history)를 LangChain 메시지로 변환한다. 최근 max_turns턴만 유지해 토큰 증가를 제한한다."""
+    if not history:
+        return []
+    trimmed = history[-max_turns:] if max_turns > 0 else []
+    messages = []
+    for turn in trimmed:
+        messages.append(HumanMessage(content=turn["question"]))
+        messages.append(AIMessage(content=turn["answer"]))
+    return messages
 
-    # 1. 설정값 로드
+
+def build_llm(config: dict = None):
+    """설정에 맞는 ChatOpenAI 인스턴스를 생성한다. generate_answer와 condense_question이 공유해서 쓴다."""
     gen_config = config.get("generation", {}) if config else {}
     model_name = gen_config.get("model", "gpt-5-nano")
     temperature = gen_config.get("temperature", 0.1)
     top_p = gen_config.get("top_p", 0.95)
     max_tokens = gen_config.get("max_tokens", 3000)
 
-    # 2. LLM 및 체인 구성
     # gpt-5/o-시리즈(reasoning 모델)는 temperature/top_p가 1로 고정되어 있어
     # 커스텀 값을 보내면 400 Unsupported parameter 에러가 발생한다.
     # 해당 모델일 땐 두 파라미터를 빼고, 그 외 모델(gpt-4o 등)일 땐 YAML 값을 그대로 적용한다.
@@ -65,19 +74,64 @@ def generate_answer(question: str, results: list[SearchResult], config: dict = N
         llm_kwargs["temperature"] = temperature
         llm_kwargs["top_p"] = top_p
 
-    llm = ChatOpenAI(**llm_kwargs)
+    return ChatOpenAI(**llm_kwargs)
+
+
+def condense_question(question: str, history: list[dict] | None, config: dict = None) -> str:
+    """후속 질문을 이전 대화 맥락(기관/사업명 등)을 반영한 독립 질문으로 재구성한다.
+    검색(retrieval) 단계에서 이 질문을 사용해야 후속 질문도 올바른 문서를 찾는다."""
+    if not history:
+        return question
+
+    llm = build_llm(config)
+    history_text = "\n".join(
+        f"Q: {turn['question']}\nA: {turn['answer']}" for turn in history
+    )
+    condense_prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "아래는 이전 대화 내역입니다. 마지막 질문이 이전 대화의 기관명·사업명 등 문맥을 생략한 "
+         "후속 질문이라면, 그 문맥을 반영해 검색에 바로 쓸 수 있는 완전한 독립 질문 하나로 다시 쓰세요. "
+         "마지막 질문이 이미 다른 기관·사업을 명확히 새로 언급하고 있다면 원래 질문을 그대로 반환하세요. "
+         "재작성된 질문 한 줄만 출력하고 다른 설명은 하지 마세요."),
+        ("human", "이전 대화:\n{history}\n\n마지막 질문: {question}\n\n독립 질문:")
+    ])
+    chain = condense_prompt | llm | StrOutputParser()
+    return chain.invoke({"history": history_text, "question": question}).strip()
+
+
+def generate_answer(
+    question: str,
+    results: list[SearchResult],
+    config: dict = None,
+    history: list[dict] = None,
+) -> dict:
+    if not results:
+        return {
+            "answer": "관련 문서 내용을 찾지 못했습니다. 원본 문서나 검색 조건을 다시 확인해 주세요.",
+            "sources": [],
+        }
+
+    gen_config = config.get("generation", {}) if config else {}
+    history_config = gen_config.get("history", {})
+    max_turns = history_config.get("max_turns", 3)
+
+    llm = build_llm(config)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", SYSTEM_RULE + "\n\nContext:\n{context}"),
+        MessagesPlaceholder("history", optional=True),
         ("human", "{question}")
     ])
 
-    # 여기서 'chain' 변수가 정의됩니다.
     chain = prompt | llm | StrOutputParser()
 
-    # 3. 컨텍스트 빌드 후 실행
     context = build_context(results)
-    answer = chain.invoke({"context": context, "question": question})
+    history_messages = build_history_messages(history, max_turns)
+    answer = chain.invoke({
+        "context": context,
+        "question": question,
+        "history": history_messages,
+    })
 
     return {
         "answer": answer,
