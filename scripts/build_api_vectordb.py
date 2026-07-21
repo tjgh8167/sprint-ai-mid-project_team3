@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 def build_db():
     load_dotenv() # 환경변수(.env)에서 OPENAI_API_KEY 로직 추가
 
@@ -14,14 +16,15 @@ def build_db():
         return
 
     # 설정 및 데이터 로드
-    yaml_path = "./config/default.yaml"
+    yaml_path = BASE_DIR / "config/default.yaml" # 절대 경로로 지정
     with open(yaml_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
-    # yaml에 있는 청크 파일 경로 확인
-    chunk_path = config["paths"]["chunks"]
+    # yaml에 있는 청크 파일 경로 확인 (상대 경로라면 BASE_DIR 기준으로 절대 경로 변환)
+    raw_chunk_path = config["paths"]["chunks"]
+    chunk_path = Path(raw_chunk_path) if os.path.isabs(raw_chunk_path) else BASE_DIR / raw_chunk_path
 
-    if not os.path.exists(chunk_path):
+    if not chunk_path.exists():
         print(f"청크 파일을 찾을 수 없습니다: {chunk_path}")
         return
 
@@ -97,9 +100,8 @@ def build_db():
     try:
         before_count = vectorstore._collection.count()
         print(f"적재 전 Chroma DB 청크 수: {before_count}개")
-    except Exception as e:
-        print(f"[경고] 기존 DB 상태를 확인할 수 없습니다 (최초 생성일 수 있음): {e}")
-        before_count = 0
+    except Exception as exc:
+        raise RuntimeError(f"기존 Vector DB 조회에 실패했습니다: {doc_id}") from exc
 
     # 입력 받은 청크 데이터를 문서로 묶기 (doc_id)
     incoming_docs = {}
@@ -159,13 +161,13 @@ def build_db():
     # 기존 DB 데이터와 새로운 청크 파일 비교 분석
     for doc_id, new_chunks in incoming_docs.items():
         
-        try:                                     # 현재 DB에서 새롭게 받은 문서(doc_id)에 해당하는 기존 청크들을 직접 조회
+        try:                                     
             existing = vectorstore.get(where={"doc_id": doc_id}, include=["documents", "metadatas"])
             existing_ids = existing.get("ids", [])
             existing_docs = existing.get("documents", [])
             existing_metadatas = existing.get("metadatas", [])
-        except Exception:
-            existing_ids, existing_docs, existing_metadatas = [], [], []
+        except Exception as exc:
+            raise RuntimeError(f"기존 Vector DB 조회에 실패했습니다: {doc_id}") from exc
 
         # 기존 DB에 있던 청크 데이터 수 += (유지, 수정, 삭제 청크 수)
         total_existing_chunks_processed += len(existing_ids)
@@ -241,14 +243,13 @@ def build_db():
             "chunk_overlap": chunk_overlap
         }, f, indent=4)                                     # 들여쓰기 (하드코딩 사유: 들여쓰기라 굳이..?)
 
-    total_details = stat_unchanged + stat_modified + stat_deleted + stat_added
     after_count = vectorstore._collection.count()
 
     print("== VectorDB 최신화 완료 ==")
     print(f" 기존 청크 수: {total_existing_chunks_processed}개")
     print(f" 최신화 후 최종 청크 수: {after_count}개")
     print("-"*40)
-    print(f" == 세부 변경 내역 총 {total_details}개 ==")
+    print(f" == 세부 처리 결과 ==")
     print(f" - 유지 : {stat_unchanged}개")
     print(f" - 수정 : {stat_modified}개")
     print(f" - 삭제 : {stat_deleted}개")
