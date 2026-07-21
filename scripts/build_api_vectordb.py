@@ -101,7 +101,7 @@ def build_db():
         before_count = vectorstore._collection.count()
         print(f"적재 전 Chroma DB 청크 수: {before_count}개")
     except Exception as exc:
-        raise RuntimeError(f"기존 Vector DB 조회에 실패했습니다: {doc_id}") from exc
+        raise RuntimeError(f"기존 Vector DB 조회에 실패했습니다.") from exc
 
     # 입력 받은 청크 데이터를 문서로 묶기 (doc_id)
     incoming_docs = {}
