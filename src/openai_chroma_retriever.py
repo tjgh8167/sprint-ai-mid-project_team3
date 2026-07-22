@@ -59,9 +59,9 @@ class OpenAIChromaRetriever:
         # 부분 일치 설정 (ChromaDB는 기본적으로 정확히 일치하는 필터만 지원하므로, 부분 일치를 위해서는 검색 결과를 더 많이 가져와서 필터링 후 top_k만큼 반환)
         fetch_k = max(search_k * 10, self.fetch_k_base) # fetch_k_base는 yaml에서 설정한 값
 
-        # Chroma에서 유사도 검색 수행(질문벡터와 거리점수(유사도) 계산)
+        # Chroma에서 유사도 검색 수행(질문벡터와 유사도 점수 계산)
         try: 
-            docs_and_scores = self.vectorstore.similarity_search_with_score(
+            docs_and_scores = self.vectorstore.similarity_search_with_relevance_scores(
                 query=query,
                 k=fetch_k,
                 filter= None
