@@ -82,10 +82,18 @@ def condense_question(question: str, history: list[dict] | None, config: dict = 
     검색(retrieval) 단계에서 이 질문을 사용해야 후속 질문도 올바른 문서를 찾는다."""
     if not history:
         return question
+    
+    gen_config = config.get("generation", {}) if config else {}
+    history_config = gen_config.get("history", {})
+    max_turns = history_config.get("max_turns", 3)
+    recent_history = history[-max_turns:] if max_turns > 0 else []
+
+    if not recent_history:
+        return question
 
     llm = build_llm(config)
     history_text = "\n".join(
-        f"Q: {turn['question']}\nA: {turn['answer']}" for turn in history
+        f"Q: {turn['question']}\nA: {turn['answer']}" for turn in recent_history
     )
     condense_prompt = ChatPromptTemplate.from_messages([
         ("system",
