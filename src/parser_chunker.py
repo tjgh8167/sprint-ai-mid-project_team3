@@ -3,12 +3,10 @@ import zlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-<<<<<<< HEAD
 import fitz
 import olefile
 from pypdf import PdfReader
-=======
->>>>>>> main
+
 
 
 HWP_PARA_TEXT_TAG = 67
