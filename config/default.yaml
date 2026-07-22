@@ -36,6 +36,8 @@ generation:
   temperature: 0.1
   top_p: 0.95
   max_tokens: 3000
+  history:
+    max_turns: 3
 
 experiments:
   advanced_search:

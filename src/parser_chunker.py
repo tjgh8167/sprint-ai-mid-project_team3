@@ -3,15 +3,20 @@ import zlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+<<<<<<< HEAD
 import fitz
 import olefile
 from pypdf import PdfReader
+=======
+>>>>>>> main
 
 
 HWP_PARA_TEXT_TAG = 67
 HWP_TABLE_TAG = 77
 HWP_IMAGE_SUFFIXES = {'.bmp', '.emf', '.gif', '.jpeg', '.jpg', '.png', '.svg', '.tif', '.tiff', '.wmf'}
 HWP_SINGLE_CONTROL_CHARS = {9, 10, 13, 24, 30, 31}
+CHUNK_REQUIRED_FIELDS = ("chunk_id", "doc_id", "text", "metadata")
+REQUIRED_METADATA_FIELDS = ("title", "project_name", "agency", "file_name")
 
 
 @dataclass
@@ -84,6 +89,8 @@ def _iter_hwp_body_records(hwp: olefile.OleFileIO, compressed: bool):
 
 # HWP 5.x 파일의 압축된 본문 스트림을 열어 텍스트를 추출합니다.
 def _read_hwp(path: Path) -> str:
+    import olefile
+
     if not olefile.isOleFile(path):
         raise ValueError("HWP 5.x OLE 문서가 아닙니다.")
 
@@ -256,6 +263,8 @@ def read_document(path: str | Path) -> str:
         return path.read_text(encoding="utf-8-sig").strip()
 
     if suffix == ".pdf":
+        from pypdf import PdfReader
+
         reader = PdfReader(str(path))
         pages = [page.extract_text() or "" for page in reader.pages]
         return "\n\n".join(pages).strip()
@@ -322,10 +331,36 @@ def save_chunks_jsonl(chunks: list[Chunk], output_path: str | Path) -> None:
             f.write(json.dumps(asdict(chunk), ensure_ascii=False) + "\n")
 
 
+# 청크 JSONL 레코드가 공통 입력 계약을 지키는지 검증합니다.
+def validate_chunk_contract(chunks: list[dict]) -> None:
+    for index, chunk in enumerate(chunks, start=1):
+        missing_fields = [field for field in CHUNK_REQUIRED_FIELDS if field not in chunk]
+        if missing_fields:
+            raise ValueError(f"{index}번째 청크에 필수 필드가 없습니다: {', '.join(missing_fields)}")
+        if not isinstance(chunk["metadata"], dict):
+            raise ValueError(f"{index}번째 청크의 metadata는 객체여야 합니다.")
+        missing_metadata_fields = [
+            field
+            for field in REQUIRED_METADATA_FIELDS
+            if not isinstance(chunk["metadata"].get(field), str)
+            or not chunk["metadata"][field].strip()
+        ]
+        if missing_metadata_fields:
+            raise ValueError(
+                f"{index}번째 청크 metadata에 필수 필드가 없습니다: {', '.join(missing_metadata_fields)}"
+            )
+        if not isinstance(chunk["text"], str) or not chunk["text"].strip():
+            raise ValueError(f"{index}번째 청크의 text는 비어 있지 않은 문자열이어야 합니다.")
+
+
 # 저장된 JSONL 파일을 읽어 청크 딕셔너리 목록으로 반환합니다.
-def load_chunks_jsonl(path: str | Path) -> list[dict]:
+def load_chunks_jsonl(path: str | Path, *, validate: bool = False) -> list[dict]:
     with Path(path).open("r", encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+        chunks = [json.loads(line) for line in f if line.strip()]
+
+    if validate:
+        validate_chunk_contract(chunks)
+    return chunks
 
 
 # 실제 원본 데이터 없이 전체 RAG 흐름을 시험할 수 있는 샘플 청크를 만듭니다.
