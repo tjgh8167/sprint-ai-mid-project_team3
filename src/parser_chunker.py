@@ -98,6 +98,45 @@ def _read_hwp(path: Path) -> str:
     return "\n".join(paragraphs)
 
 
+# Inspect PDF page text extraction to determine whether OCR review is needed.
+def inspect_pdf_text_extraction(path: str | Path) -> dict:
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Document file was not found: {path}")
+    if path.suffix.lower() != ".pdf":
+        raise ValueError(f"Only PDF files can be inspected: {path}")
+
+    reader = PdfReader(str(path))
+    page_text_lengths = []
+    empty_page_numbers = []
+
+    for page_number, page in enumerate(reader.pages, start=1):
+        text = (page.extract_text() or "").strip()
+        page_text_lengths.append(len(text))
+        if not text:
+            empty_page_numbers.append(page_number)
+
+    page_count = len(page_text_lengths)
+    empty_page_count = len(empty_page_numbers)
+    if page_count == 0:
+        ocr_recommendation = "review_required"
+    elif empty_page_count == page_count:
+        ocr_recommendation = "ocr_required"
+    elif empty_page_count:
+        ocr_recommendation = "review_required"
+    else:
+        ocr_recommendation = "not_required"
+
+    return {
+        "file_name": path.name,
+        "page_count": page_count,
+        "total_text_length": sum(page_text_lengths),
+        "empty_page_count": empty_page_count,
+        "empty_page_numbers": empty_page_numbers,
+        "ocr_recommendation": ocr_recommendation,
+    }
+
+
 # 파일 확장자에 맞는 방식으로 TXT, PDF, HWP 문서의 본문을 읽습니다.
 def read_document(path: str | Path) -> str:
     path = Path(path)
