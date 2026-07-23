@@ -87,7 +87,6 @@ def _iter_hwp_body_records(hwp: olefile.OleFileIO, compressed: bool):
 
 # HWP 5.x 파일의 압축된 본문 스트림을 열어 텍스트를 추출합니다.
 def _read_hwp(path: Path) -> str:
-    import olefile
 
     if not olefile.isOleFile(path):
         raise ValueError("HWP 5.x OLE 문서가 아닙니다.")
@@ -261,7 +260,6 @@ def read_document(path: str | Path) -> str:
         return path.read_text(encoding="utf-8-sig").strip()
 
     if suffix == ".pdf":
-        from pypdf import PdfReader
 
         reader = PdfReader(str(path))
         pages = [page.extract_text() or "" for page in reader.pages]
