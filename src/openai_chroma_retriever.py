@@ -28,11 +28,17 @@ class OpenAIChromaRetriever:
         # OpenAI 임베딩 생성기 초기화
         self.embeddings = OpenAIEmbeddings(model=embedding_model)
 
-        # top_k 값 저장 (yaml에서 설정한 값이 없으면 기본값 3으로 설정)
+        # top_k 값 설정 (yaml에서 설정한 값이 없으면 기본값 3으로 설정)
         self.default_top_k = retrieval_config.get("top_k", 3)
+
+        # 검색 방식 설정
+        self.search_method = retrieval_config.get("search_method", "similarity")
 
         # 부분 일치 설정 (ChromaDB는 기본적으로 정확히 일치하는 필터만 지원하므로, 부분 일치를 위해서는 검색 결과를 더 많이 가져와서 필터링 후 top_k만큼 반환)
         self.fetch_k_base = openai_config.get("fetch_k", 50)  # 부분 일치 검색 활용, 기본값 50
+
+        # mmr 조절값 설정
+        self.lambda_mult = openai_config.get("lambda_mult", 0.5)
 
         # Vector DB 생성
         self.vectorstore = Chroma(
@@ -40,7 +46,7 @@ class OpenAIChromaRetriever:
             embedding_function=self.embeddings,
             persist_directory=persist_directory
         )
-    # 정규화 함수 추가: 텍스트를 정규화하여 필터링 시 일관성을 유지
+    # 정규화 함수 추가: "--filtter" 텍스트를 정규화하여 필터링 시 일관성을 유지
     def normalize_text(self, text: str) -> str:
         if not text: return ""
         text = unicodedata.normalize('NFC', str(text)) # 유니코드 정규화
@@ -59,18 +65,37 @@ class OpenAIChromaRetriever:
         # 부분 일치 설정 (ChromaDB는 기본적으로 정확히 일치하는 필터만 지원하므로, 부분 일치를 위해서는 검색 결과를 더 많이 가져와서 필터링 후 top_k만큼 반환)
         fetch_k = max(search_k * 10, self.fetch_k_base) # fetch_k_base는 yaml에서 설정한 값
 
-        # Chroma에서 유사도 검색 수행(질문벡터와 유사도 점수 계산)
+        # Search_methood 조건별 작동 로직
         try: 
-            docs_and_scores = self.vectorstore.similarity_search_with_relevance_scores(
-                query=query,
-                k=fetch_k,
-                filter= None
-            )
+            if self.search_method == "mmr":
+                # MMR 검색 (다양성 고려)
+                mmr_k = search_k
+                mmr_fetch = fetch_k * 2 if active_filters else fetch_k
+                
+                docs = self.vectorstore.max_marginal_relevance_search(
+                    query=query,
+                    k=mmr_k,
+                    fetch_k=mmr_fetch,
+                    lambda_mult=self.lambda_mult,
+                    filter=None
+                )
+                # Langchain의 MMR은 유사도 점수를 반환하지 않으므로 구조 통일을 위해 0.0으로 처리 (하드 코딩 X)
+                docs_and_scores = [(doc, 0.0) for doc in docs]
+            else:
+                # 유사도 기반 검색 시 필터(--filters{})가 있으면  fetch_k + top_k 사용 / 없다면 top_k만 사용 -> 최적화
+                search_limit = fetch_k if active_filters else search_k
 
-        except Exception as e:                 # ChromaDB에서 필터 조건이 잘못되었거나, 검색 중 오류가 발생하면 예외를 발생시켜 호출자에게 알림
+                # 유사도 점수
+                docs_and_scores = self.vectorstore.similarity_search_with_relevance_scores(
+                    query=query,
+                    k=search_limit,
+                    filter= None
+                )
+
+        except Exception as e:       # ChromaDB에서 필터 조건이 잘못되었거나, 검색 중 오류가 발생하면 예외를 발생시켜 호출자에게 알림
             raise
 
-        if not docs_and_scores:                # docs_and_scores가 비어있으면 (즉, 검색 결과가 없으면) 빈 리스트 반환
+        if not docs_and_scores:      # docs_and_scores가 비어있으면 (즉, 검색 결과가 없으면) 빈 리스트 반환
             return []
 
         # 부분 일치 필터링 
