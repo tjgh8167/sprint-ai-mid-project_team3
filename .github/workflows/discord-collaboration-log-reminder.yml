@@ -1,8 +1,6 @@
 name: Discord Collaboration Log Reminder
 
 on:
-  schedule:
-    - cron: "50 9 * * 1-5"
   workflow_dispatch:
 
 jobs:
