@@ -150,9 +150,12 @@ def build_chunks(
     *,
     chunk_size: int,
     chunk_overlap: int,
+    ocr_texts: list[str] | None = None,
 ) -> list[Chunk]:
+    from src.ocr_extractor import merge_ocr_text
+
     path = Path(file_path)
-    text = read_document(path)
+    text = merge_ocr_text(read_document(path), ocr_texts or [])
     base_metadata = {
         "file_name": path.name,
         "source_path": str(path),

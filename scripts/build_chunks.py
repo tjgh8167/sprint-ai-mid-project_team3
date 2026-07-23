@@ -1,13 +1,18 @@
 import argparse
+import sys
 from pathlib import Path
 
 import pandas as pd
 import yaml
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.ocr_extractor import load_ocr_texts_by_doc_id
 from src.parser_chunker import build_chunks, load_chunks_jsonl, save_chunks_jsonl
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
 METADATA_COLUMNS = {
     "공고 번호": "notice_number",
     "공고 차수": "notice_round",
@@ -87,6 +92,7 @@ def main() -> None:
     failure_log_path = resolve_project_path(config["paths"]["extraction_failures"])
     chunk_size = config["chunking"]["chunk_size"]
     chunk_overlap = config["chunking"]["chunk_overlap"]
+    ocr_texts_by_doc_id = load_ocr_texts_by_doc_id(resolve_project_path(config["paths"]["ocr_documents"]))
 
     metadata_frame = pd.read_csv(metadata_path, encoding="utf-8-sig")
     missing_columns = sorted(set(METADATA_COLUMNS) - set(metadata_frame.columns))
@@ -111,6 +117,7 @@ def main() -> None:
                 metadata=build_metadata(row),
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
+                ocr_texts=ocr_texts_by_doc_id.get(doc_id, []),
             )
             if not document_chunks:
                 raise ValueError("추출된 텍스트가 비어 있어 청크를 만들 수 없습니다.")
