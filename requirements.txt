@@ -163,6 +163,7 @@ pydeck==0.9.3
 pygments==2.20.0
 pymupdf==1.28.0
 pypdf==6.14.2
+pytesseract==0.3.13
 pypika==0.51.1
 pyproject-hooks==1.2.0
 python-dateutil==2.9.0.post0
