@@ -19,9 +19,25 @@ data/raw/
 data/processed/
 vector_db/
 chroma_db/
+my_isolated_chroma_db/
 *.faiss
 *.pkl
 
 # OS / editor
 .DS_Store
 .vscode/
+
+# ==========================================
+# Hugging Face 모델 캐시 및 대용량 가중치 제외
+# ==========================================
+# 모델 캐시 저장 전용 폴더 전체 제외
+model_cache/
+.cache/
+notebook/model_cache/
+
+# 모델 가중치 대용량 파일 확장자 직접 제외
+*.safetensors
+*.bin
+*.onnx
+*.pt
+*.pth

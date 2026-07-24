@@ -2,6 +2,11 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass
+from typing import Dict, Any, List, Optional
+
+# [수정] 불필요한 구형 langchain_community import 2줄 제거 완료
+# - from langchain_community.embeddings import HuggingFaceEmbeddings
+# - from langchain_community.vectorstores import Chroma
 
 
 @dataclass
@@ -43,6 +48,7 @@ def _metadata_matches(metadata: dict, filters: dict | None) -> bool:
 
 
 class SimpleRetriever:
+    """메모리 기반 단순 토큰 카운트 유사도 검색기 (기존 유지)"""
     def __init__(self, chunks: list[dict]):
         self.chunks = chunks
         self._chunk_vectors = [Counter(tokenize(chunk["text"])) for chunk in chunks]
@@ -71,3 +77,7 @@ class SimpleRetriever:
             )
 
         return sorted(results, key=lambda item: item.score, reverse=True)[:top_k]
+
+
+# [수정] 중복 및 구형 구현체인 LocalChromaRetriever 클래스 전체 삭제 완료
+# 최신 구현체는 src/local_chroma_retriever.py를 모듈로 단일 import하여 사용합니다.

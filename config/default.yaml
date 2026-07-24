@@ -1,23 +1,22 @@
+# =============================================================================
+# 1. 경로 설정 (paths 구역)
+# =============================================================================
 paths:
   metadata: /data/original_data/data_list.csv
   normalized_metadata: /data/processed/metadata.csv
   raw_documents: /data/original_data/files
   chunks: /data/processed/chunks_800_120.jsonl
   extraction_failures: /data/processed/extraction_failures.csv
-  ocr_documents: /data/processed/ocr_documents.jsonl
-  ocr_report: /data/processed/ocr_report.csv
 
 chunking:
   chunk_size: 800
   chunk_overlap: 120
 
-ocr:
-  language: kor+eng
-  min_width: 200
-  min_height: 100
-  min_text_length: 2
-
+# =============================================================================
+# 2. 검색 설정 (Retrieval)
+# =============================================================================
 retrieval:
+  # 기본 프로필 (baseline)
   active_profile: baseline
   top_k: 5 # fetch_k 적용으로 실제 검색 시 가져올 상위 결과 수 조정 (3 -> 5)
   search_method: similarity
@@ -34,11 +33,17 @@ retrieval:
       batch_size: 1000 # vector DB에 데이터를 넣을 때 한 번에 처리할 데이터 수
     local:
       provider: huggingface
-      embedding_model: null
+      embedding_model: dragonkue/BGE-m3-ko # 0715 이태훈
       vector_db: chroma
-      persist_directory: vector_db/local
+      persist_directory: /data/processed/vector_db/local
       collection_name: bidmate_local
-
+      cache_path: model_cache
+      device: cpu
+      fetch_k: 100
+      batch_size: 1000
+# =============================================================================
+# 3. 생성 설정 (Generation)
+# =============================================================================
 generation:
   provider: openai
   model: gpt-5-nano
@@ -48,6 +53,9 @@ generation:
   history:
     max_turns: 3
 
+# =============================================================================
+# 4. 실험 설정 (Experiments)
+# =============================================================================
 experiments:
   advanced_search:
     - mmr
