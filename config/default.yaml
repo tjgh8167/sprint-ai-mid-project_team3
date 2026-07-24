@@ -41,7 +41,7 @@ retrieval:
 
 generation:
   provider: openai
-  model: gpt-5-nano
+  model: gpt-5-mini   # 변경: gpt-5-nano -> gpt-5-mini (이슈 #30 실험 결과, docs/experiment_log.md 참고)
   temperature: 0.1
   top_p: 0.95
   max_tokens: 3000
