@@ -104,109 +104,112 @@ def build_db():
         raise RuntimeError(f"기존 Vector DB 조회에 실패했습니다.") from exc
 
     # 입력 받은 청크 데이터를 문서로 묶기 (doc_id)
-    incoming_docs = {}
+    incoming_chunks_map = {}
+    incoming_doc_ids = set() # 삭제 로그용 doc_id 모음
+
     for idx, chunk in enumerate(chunks):
         meta = chunk.get("metadata", {}).copy()
-        chunk_id = chunk.get("chunk_id", f"chunk_{idx}")
-        doc_id = chunk.get("doc_id", meta.get("doc_id", ""))
         
-        meta["chunk_id"] = chunk_id
+        raw_chunk_id = meta.get("chunk_id") or chunk.get("chunk_id")
+        doc_id = meta.get("doc_id") or chunk.get("doc_id") or ""
+        
+        unique_id = str(raw_chunk_id if raw_chunk_id else f"{doc_id}_chunk_{idx}" if doc_id else f"chunk_{idx}")
+        
+        meta["chunk_id"] = unique_id
         meta["doc_id"] = doc_id
         
-        if doc_id not in incoming_docs:
-            incoming_docs[doc_id] = []
-            
-        incoming_docs[doc_id].append({
-            "id": chunk_id,
-            "text": chunk["text"],
+        if doc_id:
+            incoming_doc_ids.add(doc_id)
+
+        incoming_chunks_map[unique_id] = {
+            "id": unique_id,
+            "text": chunk.get("text", ""),
             "metadata": meta
-        })
+        }
+
+    incoming_ids = set(incoming_chunks_map.keys())
 
     # 통계를 위한 카운터
-    total_existing_chunks_processed = 0 # 기존 전체 청크 수
-    stat_unchanged = 0                  # 변경 되지 않은 청크 (유지)
-    stat_modified = 0                   # 변경 된 청크
-    stat_deleted = 0                    # 삭제된 청크
-    stat_added = 0                      # 추가된 청크
+    total_existing_chunks_processed = before_count  # 기존 전체 청크 수
+    stat_unchanged = 0                              # 변경 되지 않은 청크 (유지)
+    stat_modified = 0                               # 변경 된 청크
+    stat_deleted = 0                                # 삭제된 청크
+    stat_added = 0                                  # 추가된 청크
 
-    # 없어진 정보를 삭제하는 로직 추가
-    if not is_option_changed and before_count > 0:              # 완전히 DB를 삭제한 것이 아닌 기존 DB가 한개라도 남아 있다면
-        all_db_data = vectorstore.get(include=["metadatas"])    # 기존 DB의 벡터데이터를 긁어옴
-        all_db_doc_ids = set()
-
-        for meta in all_db_data.get("metadatas", []):           # 메타데이터에서 doc_id 만 모아서 set으로 저장
-            if meta and "doc_id" in meta:
-                all_db_doc_ids.add(meta["doc_id"])
-        
-        incoming_doc_ids = set(incoming_docs.keys())            # 새로 들어온 데이터도 doc_id 만 따로 set으로 저장
-        completely_deleted_doc_ids = all_db_doc_ids - incoming_doc_ids  # 원래 있던 doc_id에서 새로들어온 doc_id를 뺌, 그럼 통째로 사라진 파일에 대해 파악 가능
-        
-        for d_id in completely_deleted_doc_ids:                 # 사라진 문서들의 doc_id를 돌며 삭제 
-            # 삭제 전, 해당 문서의 청크 개수만 가볍게 조회 후 삭제
-            chunks_to_delete = vectorstore.get(where={"doc_id": d_id}, include=[])
-            deleted_chunks_count = len(chunks_to_delete.get("ids", []))
-            
-            print(f"더 이상 존재하지 않는 문서 삭제 중 (doc_id: {d_id}, 청크 {deleted_chunks_count}개)")
-            vectorstore.delete(where={"doc_id": d_id})          # 사라진 문서는 삭제 처리
-            
-            total_existing_chunks_processed += deleted_chunks_count # 삭제된 청크만큼 청크 status에 추가
-            stat_deleted += deleted_chunks_count                    # 삭제된 청크 갯수 추가
-        
-    # 실제 DB 작업에 쓰일 리스트 모음
+    # 변경사항이 있는 데이터를 담을 리스트 
     to_upsert_texts = []
     to_upsert_metadatas = []
     to_upsert_ids = []
     to_delete_ids = []
 
-    # 기존 DB 데이터와 새로운 청크 파일 비교 분석
-    for doc_id, new_chunks in incoming_docs.items():
+    if not is_option_changed and before_count > 0:
+        print("기존 Vector DB 데이터와 비교 분석 중...")
         
-        try:                                     
-            existing = vectorstore.get(where={"doc_id": doc_id}, include=["documents", "metadatas"])
-            existing_ids = existing.get("ids", [])
-            existing_docs = existing.get("documents", [])
-            existing_metadatas = existing.get("metadatas", [])
-        except Exception as exc:
-            raise RuntimeError(f"기존 Vector DB 조회에 실패했습니다: {doc_id}") from exc
-
-        # 기존 DB에 있던 청크 데이터 수 += (유지, 수정, 삭제 청크 수)
-        total_existing_chunks_processed += len(existing_ids)
-
-        # 빠른 비교를 위해 기존 데이터를 딕셔너리로 맵핑
+        # for문 안에서 DB를 매번 부르지 않고, 전체 데이터를 한 번만 가져옴
+        existing_data = vectorstore.get(include=["documents", "metadatas"])
+        existing_ids_list = existing_data.get("ids", [])
+        existing_docs = existing_data.get("documents", [])
+        existing_metas = existing_data.get("metadatas", [])
+        
         existing_map = {}
-        for eid, edoc, emeta in zip(existing_ids, existing_docs, existing_metadatas):
+        db_doc_to_chunks = {} # 삭제 로그용: doc_id별 청크 목록 맵핑
+
+        for eid, edoc, emeta in zip(existing_ids_list, existing_docs, existing_metas):
             existing_map[eid] = {"text": edoc, "metadata": emeta}
+            
+            # doc_id별 청크 추적
+            edoc_id = emeta.get("doc_id", "") if emeta else ""
+            if edoc_id:
+                if edoc_id not in db_doc_to_chunks:
+                    db_doc_to_chunks[edoc_id] = []
+                db_doc_to_chunks[edoc_id].append(eid)
+            
+        existing_ids = set(existing_map.keys())
 
-        # 새 파일에 존재하는 청크 ID들을 기록 (삭제된 청크 구별용)
-        seen_new_ids = set()
+        to_delete_ids = list(existing_ids - incoming_ids)
+        ids_to_add = incoming_ids - existing_ids
+        ids_in_both = incoming_ids & existing_ids
 
-        for nc in new_chunks:
-            nid = nc["id"]
-            ntext = nc["text"]
-            nmeta = nc["metadata"]
-            seen_new_ids.add(nid)
+        # 삭제 로그
+        completely_deleted_doc_ids = set(db_doc_to_chunks.keys()) - incoming_doc_ids
+        if completely_deleted_doc_ids:
+            for d_id in completely_deleted_doc_ids:
+                deleted_count = len(db_doc_to_chunks[d_id])
+                print(f"더 이상 존재하지 않는 문서 삭제 중 (doc_id: {d_id}, 청크 {deleted_count}개)")
 
-            if nid in existing_map:
-                # 기존에 있던 청크인 경우: 본문이나 메타데이터가 바뀌었는지 검사
-                if existing_map[nid]["text"] != ntext or existing_map[nid]["metadata"] != nmeta:
-                    stat_modified += 1
-                    to_upsert_texts.append(ntext)
-                    to_upsert_metadatas.append(nmeta)
-                    to_upsert_ids.append(nid)
-                else:
-                    stat_unchanged += 1
-            else:
-                # 완전히 처음 보는 새로운 청크인 경우: 추가 대상으로 등록
-                stat_added += 1
-                to_upsert_texts.append(ntext)
-                to_upsert_metadatas.append(nmeta)
-                to_upsert_ids.append(nid)
+        # 텍스트, 메타데이터 변경 감지
+        ids_to_modify = set()
+        for cid in ids_in_both:
+            old_text = existing_map[cid]["text"]
+            new_text = incoming_chunks_map[cid]["text"]
+            old_meta = existing_map[cid]["metadata"]
+            new_meta = incoming_chunks_map[cid]["metadata"]
 
-        # 기존 DB에는 있었으나, 새 파일에서는 없어진 청크인 경우: 삭제 대상으로 등록
-        for eid in existing_map:
-            if eid not in seen_new_ids:
-                stat_deleted += 1
-                to_delete_ids.append(eid)
+            if old_text != new_text or old_meta != new_meta:
+                ids_to_modify.add(cid)
+
+        ids_unchanged = ids_in_both - ids_to_modify
+
+        # 통계 최신화
+        stat_deleted = len(to_delete_ids)
+        stat_added = len(ids_to_add)
+        stat_modified = len(ids_to_modify)
+        stat_unchanged = len(ids_unchanged)
+
+        # upsert 리스트 만들기 (추가된 것 + 수정된 것)
+        target_upsert_ids = ids_to_add | ids_to_modify
+        for tid in target_upsert_ids:
+            to_upsert_ids.append(tid)
+            to_upsert_texts.append(incoming_chunks_map[tid]["text"])
+            to_upsert_metadatas.append(incoming_chunks_map[tid]["metadata"])
+
+    else:
+        # 옵션이 바뀌어 초기화됐거나, DB가 비어있는 경우 모두 추가
+        stat_added = len(incoming_ids)
+        for tid, data in incoming_chunks_map.items():
+            to_upsert_ids.append(tid)
+            to_upsert_texts.append(data["text"])
+            to_upsert_metadatas.append(data["metadata"])
 
     # 정보가 사라진 청크 데이터 삭제
     if to_delete_ids:
