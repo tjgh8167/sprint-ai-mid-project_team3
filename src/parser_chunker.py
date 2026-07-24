@@ -128,16 +128,16 @@ def inspect_pdf_text_extraction(path: str | Path) -> dict:
         if not page_text:
             empty_page_numbers.append(page_number)
 
-    image_count = 0
+    image_xrefs = set()
     image_page_numbers = []
     table_count = 0
     table_page_numbers = []
 
     with fitz.open(path) as document:
         for page_number, page in enumerate(document, start=1):
-            page_image_count = len({image[0] for image in page.get_images(full=True)})
-            image_count += page_image_count
-            if page_image_count:
+            page_image_xrefs = {image[0] for image in page.get_images(full=True)}
+            image_xrefs.update(page_image_xrefs)
+            if page_image_xrefs:
                 image_page_numbers.append(page_number)
 
             found_tables = page.find_tables().tables
@@ -145,6 +145,7 @@ def inspect_pdf_text_extraction(path: str | Path) -> dict:
             if found_tables:
                 table_page_numbers.append(page_number)
 
+    image_count = len(image_xrefs)
     page_count = len(page_text_lengths)
     empty_page_count = len(empty_page_numbers)
 
